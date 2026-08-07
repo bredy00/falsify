@@ -66,24 +66,25 @@ def sharpes_are_separated(matrix: Matrix, min_gap: float = MIN_SHARPE_GAP) -> bo
 
 @st.composite
 def separated_return_matrices(draw: st.DrawFn, min_n: int = 2, max_n: int = 12) -> Matrix:
-    """Return blocks whose columns have distinct in-sample Sharpes by construction.
-
-    Built by construction rather than by `assume(sharpes_are_separated(...))` on
-    raw draws: hypothesis favours degenerate examples, so filtering for
-    separation rejected most of them and left only 7 surviving inputs out of 57 --
-    a property test exploring 7 cases is barely a test at all.
+    """Return blocks whose columns have well-separated in-sample Sharpes.
 
     Adding `k * step * sd_k` to column k shifts that column's Sharpe by exactly
-    `k * step`, since the shift is measured in units of the column's own
-    volatility. The residual `assume` then only discards the rare case where an
-    original gap happens to cancel an induced one.
+    `k * step`, because the shift is measured in units of that column's own
+    volatility. With `step >= 2` the induced gaps dominate: the carrier in
+    `return_matrices` holds every unshifted |Sharpe| well below 1, so adjacent
+    columns end up separated by roughly `step` rather than by luck.
+
+    Separation is engineered rather than filtered for the same reason the base
+    generator is: `assume(sharpes_are_separated(...))` on raw draws left 7
+    surviving inputs out of 57 locally and tripped filter_too_much outright in
+    CI. A property test exploring 7 cases is barely a test.
     """
     m = draw(return_matrices(min_n=min_n, max_n=max_n))
     n = m.shape[1]
     if n > 1:
-        step = draw(st.floats(0.05, 0.75))
+        step = draw(st.floats(2.0, 6.0))
         m = m + np.arange(n) * step * m.std(axis=0, ddof=1)
-    assume(sharpes_are_separated(m))
+    assume(sharpes_are_separated(m))  # backstop; should effectively never fire
     return m
 
 
@@ -91,24 +92,43 @@ def separated_return_matrices(draw: st.DrawFn, min_n: int = 2, max_n: int = 12) 
 def return_matrices(
     draw: st.DrawFn, min_n: int = 1, max_n: int = 12, min_t: int = 3, max_t: int = 40
 ) -> Matrix:
-    """A (T_is, N) block of plausible per-bar returns, no degenerate columns.
+    """A (T_is, N) block of plausible per-bar returns, non-degenerate by
+    construction rather than by filtering.
 
-    Degenerate columns are excluded because `in_sample_sharpe` is specified to
-    raise on them; they get their own test rather than polluting these.
+    Every column is an alternating +/-2 carrier plus noise bounded to [-1, 1],
+    the whole thing scaled by a positive per-column volatility. Because the
+    carrier's swing strictly exceeds the noise range, no column can come out
+    constant -- so `in_sample_sharpe` never raises here and nothing needs
+    discarding.
+
+    Construction matters more than it looks. Filtering with
+    `assume(sd > 1e-6)` on raw draws tripped hypothesis's filter_too_much health
+    check, and it did so only under the `ci` profile, whose derandomize=True
+    draws a different sequence than a local run. Constructed validity removes
+    both the health check and that class of local-passes-CI-fails.
+
+    Degenerate columns are covered separately, by
+    test_constant_column_is_caught_despite_nonzero_computed_std.
     """
     t = draw(st.integers(min_t, max_t))
     n = draw(st.integers(min_n, max_n))
-    m: Matrix = draw(
+
+    carrier = np.where(np.arange(t) % 2 == 0, 2.0, -2.0)[:, None]
+    noise: Matrix = draw(
         arrays(
             np.float64,
             (t, n),
-            elements=st.floats(-0.25, 0.25, allow_nan=False, allow_infinity=False, width=64),
+            elements=st.floats(-1.0, 1.0, allow_nan=False, allow_infinity=False, width=64),
         )
     )
-    sd = m.std(axis=0, ddof=1)
-    assume(bool(np.all(np.isfinite(sd)) and np.all(sd > 1e-6)))
-    assume(bool(np.all(np.isfinite(m.mean(axis=0) / sd))))
-    return m
+    vols: Matrix = draw(
+        arrays(
+            np.float64,
+            (n,),
+            elements=st.floats(0.005, 0.05, allow_nan=False, allow_infinity=False, width=64),
+        )
+    )
+    return np.asarray((noise + carrier) * vols, dtype=np.float64)
 
 
 # ------------------------------------------------------------------- contract
@@ -145,8 +165,11 @@ def test_rules_are_deterministic_and_stateless(rule: SelectionRule, matrix: Matr
         pytest.skip("k exceeds N")
 
     first = rule.weights(matrix)
-    # Interleave an unrelated call; a stateful rule would drift here.
-    rule.weights(np.abs(matrix) + 1.0)
+    # Interleave a different call; a stateful rule would drift here. Scaling and
+    # row-reversal keep the input non-degenerate -- `np.abs` would not, since the
+    # generator's carrier is a symmetric alternation and taking its absolute
+    # value collapses a column to a constant.
+    rule.weights(matrix[::-1] * 3.0)
     second = rule.weights(matrix)
 
     assert np.array_equal(first, second), f"{rule.name} is not deterministic across calls"
