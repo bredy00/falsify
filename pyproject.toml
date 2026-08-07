@@ -18,6 +18,11 @@ dev = [
     "ruff>=0.6",
     "mypy>=1.11",
 ]
+# Report generation. Separate from dev because nothing in the gate suite depends
+# on it -- but CI installs it so mypy can typecheck scripts/status_report.py.
+docs = [
+    "reportlab>=4.2",
+]
 
 [build-system]
 requires = ["hatchling"]
@@ -54,6 +59,10 @@ select = [
 #       homoglyph mistakes. Scoped to tests so it cannot mask a confusable in
 #       package code.
 "tests/**" = ["E501", "RUF001"]
+# The status report is prose and typography, not logic: sigma, minus sign,
+# superscripts and long sentences all belong in the copy. Scoped to this one file
+# rather than to scripts/ so it cannot mask a confusable in the ref checker.
+"scripts/status_report.py" = ["E501", "RUF001"]
 
 # ----------------------------------------------------------------------- mypy
 
@@ -69,7 +78,7 @@ files = ["falsify", "tests", "scripts"]
 # scipy and matplotlib ship incomplete annotations; their absence must not be
 # allowed to silently weaken checking of our own code, so this is scoped to the
 # imports themselves rather than set globally.
-module = ["scipy.*", "matplotlib.*"]
+module = ["scipy.*", "matplotlib.*", "reportlab.*"]
 ignore_missing_imports = true
 
 # --------------------------------------------------------------------- pytest
