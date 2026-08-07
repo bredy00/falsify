@@ -36,14 +36,22 @@ jobs:
       - name: Sync locked environment
         run: uv sync --all-groups --frozen
 
+      # Catches a malformed workflow -- the failure mode that killed run
+      # 31202076622 before a single step executed, which no in-repo test could
+      # have detected because the suite never started.
+      - name: Lint workflows
+        uses: raven-actions/actionlint@v2.0.1
+
       - name: Lint
         run: uv run ruff check .
 
       - name: Typecheck
         run: uv run mypy
 
+      # --min-collected is the countermeasure for the inverse failure: a suite
+      # that runs nothing and reports success.
       - name: Gate suite
-        run: uv run pytest tests/gates -v
+        run: uv run pytest tests -v --min-collected=75
 
       # The figure is a deliverable (Session 1) and G10 will assert it is
       # byte-reproducible. Keeping it as an artefact makes a CI regression

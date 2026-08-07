@@ -32,12 +32,22 @@ test:
 	$(RUN) pytest
 
 gates:
-	$(RUN) pytest tests/gates -v
+	$(RUN) pytest tests -v --min-collected=75
 
 prop:
 	$(RUN) pytest tests/gates/test_prop.py -v -s
 
 ci: lint typecheck gates
+
+# The failure CI cannot self-report: a workflow that dies before running a step.
+# Checks the newest run for HEAD actually completed and succeeded.
+verify-ci:
+	@sha=$$(git rev-parse HEAD); \
+	 conclusion=$$(gh run list --limit 10 --json headSha,conclusion,status \
+	   --jq "[.[] | select(.headSha==\"$$sha\")][0] | \"\(.status)/\(.conclusion)\""); \
+	 echo "HEAD $$sha -> $$conclusion"; \
+	 test "$$conclusion" = "completed/success" \
+	   || (echo "verify-ci: HEAD has no successful completed run"; exit 1)
 
 # G10. Two runs from the same seeds must produce byte-identical figures.
 # Currently covers Gate 0.0's figure; extends to metrics.json when the
