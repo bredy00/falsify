@@ -91,6 +91,37 @@ Numeric output and the figure's bytes are identical across two runs at the same 
 
 ---
 
+## Gate status
+
+117 tests, ~40 s, offline. `make ci` runs exactly what CI runs.
+
+| Gate | Statement | Status |
+|---|---|---|
+| **0.0** | Reproduce the propositions before building anything | **green** — see above |
+| **G1** | Causality: scramble the future, the past stays bit-identical | **green** — 500 cuts × 20 seeds per strategy |
+| **G7** | Leakage trap: deliberately leaky pipelines must be caught | **green** — 4 of `02` A3's classes rejected |
+| **G2** | Twin engines agree to 1e-12 | **green** — `0.000e+00`, exact |
+| G3 | Analytic recovery on synthetic GBM | not started |
+| G4 | Zero-cost identity | partial — asserted for buy-and-hold under all three conventions |
+| G5 | Cost monotonicity, break-even cost | not started |
+| G6 | Null calibration, 1,000 coin flips | not started |
+| G8 | Purged, embargoed walk-forward | not started |
+| G9 | PBO via CSCV, built on `SelectionRule` | interface ready, gate not started |
+| G10 | Reproducibility from pinned hashes | partial — figure bytes and numeric output stable across runs |
+
+**G2 came out exact rather than merely within tolerance.** The two engines are written
+independently — the event engine loops bar by bar over hard-sliced prefixes, the vectorised one uses
+whole-series rolling operations and array arithmetic — and they share nothing but the warm-up index.
+Agreement is bitwise across the strategy zoo, all three execution conventions, and a cost sweep to
+125 bps. A planted one-bar engine disagreement is detected at `7.4e-02`, so the gate discriminates
+rather than passing vacuously.
+
+The three conventions are genuinely distinct on the same series: `close_to_close` 12924.37,
+`next_open` 12915.83, `next_close` 11688.41. That spread is execution-assumption risk, and `02`
+Part D wants it as a figure.
+
+---
+
 ## The number to hold onto
 
 800 configurations, four years of daily data, pure noise: expected best annualised Sharpe ≈ **1.6**.
