@@ -23,10 +23,13 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      - uses: actions/checkout@v5
+      # Pinned to exact release tags, not floating majors. A project that asserts
+      # byte-identical output should not let its own toolchain drift underneath
+      # it -- and setup-uv publishes no floating `v9` tag anyway.
+      - uses: actions/checkout@v7.0.1
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v9
+        uses: astral-sh/setup-uv@v9.0.0
         with:
           enable-cache: true
 
@@ -47,7 +50,7 @@ jobs:
       # inspectable rather than merely red.
       - name: Upload figures
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: figures
           path: docs/figures/
