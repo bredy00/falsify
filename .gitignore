@@ -1,0 +1,25 @@
+# environments
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+
+# tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+
+# data cache -- never committed. The MANIFEST that describes it IS committed,
+# because G10 verifies against it (02 Part G).
+data/cache/
+!data/MANIFEST.json
+
+# run outputs. Figures checked into docs/figures/ are deliverables and tracked;
+# everything a run scribbles goes here.
+outputs/
+
+# OS noise
+.DS_Store
+Thumbs.db
+desktop.ini
