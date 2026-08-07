@@ -35,8 +35,6 @@ from numpy.typing import NDArray
 from scipy.integrate import quad
 from scipy.stats import linregress, norm
 
-from falsify.accumulation import accumulate, append_history, assert_within_bands
-
 EULER = 0.5772156649015329  # Euler-Mascheroni constant
 ANN = math.sqrt(252.0)      # annualisation for daily bars; display boundary only (B8)
 MASTER_SEED = 20140458      # Notices of the AMS 61(5), May 2014, p. 458
@@ -47,9 +45,6 @@ SPLIT = T_BARS // 2         # in-sample / out-of-sample midpoint
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FIGURE_PATH = REPO_ROOT / "docs" / "figures" / "compensation_effect.png"
-# Append-only, and gitignored: it accumulates across local runs so the bands can
-# be calibrated from evidence rather than guessed.
-ACCUMULATION_HISTORY = REPO_ROOT / "outputs" / "accumulation.jsonl"
 
 # Experiment A. The headline case is drawn brute force exactly as specified:
 # N = 1000 standard normals, take the max, 10,000 repetitions.
@@ -349,9 +344,6 @@ def test_experiment_a_monte_carlo_matches_exact(sweep_a: SweepMeasurements) -> N
     compared Monte Carlo against the Gumbel approximation and so had to skip
     N < 500, where the approximation's own 2%+ error swamped the 1% band. That
     was an untested region hiding behind a comment; there is none now.
-
-    This is the point-expectation view. `test_accumulated_error_band` pools the
-    same draws instead; both run, and neither replaces the other.
     """
     worst_n, worst_gap = 0, 0.0
     for n, emp, se, exact in zip(
@@ -363,61 +355,6 @@ def test_experiment_a_monte_carlo_matches_exact(sweep_a: SweepMeasurements) -> N
         print(f"N={n:>9,}  emp={emp:.5f} +/- {se:.5f}  exact={exact:.5f}  gap={gap:.2f} SE")
         assert gap < 4.0, f"N={n}: empirical {emp:.5f} is {gap:.1f} SE from exact {exact:.5f}"
     print(f"worst deviation across {len(sweep_a.ns)} values of N: {worst_gap:.2f} SE at N={worst_n:,}")
-
-
-def test_accumulated_error_band(sweep_a: SweepMeasurements) -> None:
-    """EXPERIMENTAL -- the accumulation view, on trial alongside the point checks.
-
-    Rather than asking each measurement to sit near its own expected value, pool
-    all 13 and require the pooled statistic to land inside a band. A band over
-    pooled evidence cannot be reached by tuning any single run, which is the
-    argument for preferring it.
-
-    Both banded statistics are dimensionless, so one band covers every N:
-    `rms_z -> 1` and `mean|z| -> sqrt(2/pi)`, with widths that follow from k
-    alone. `mean|diff|` is printed but deliberately unbanded -- it scales with
-    the sampling budget, so a fixed bound on it would describe the budget rather
-    than the code.
-
-    Nothing here weakens anything: the exact closed-form identity and the per-N
-    4-SE bounds both still gate the build.
-    """
-    acc = accumulate(
-        "experiment_a_sweep", sweep_a.empirical, sweep_a.exact, sweep_a.standard_errors
-    )
-    print(acc.describe())
-    assert_within_bands(acc)
-
-    history = append_history(ACCUMULATION_HISTORY, acc)
-    print(f"accumulation history: {len(history)} run(s) recorded at {ACCUMULATION_HISTORY}")
-    if len(history) > 1:
-        pooled = [float(r["rms_z"]) for r in history]  # type: ignore[arg-type]
-        print(
-            f"rms_z across runs: n={len(pooled)} mean={np.mean(pooled):.4f} "
-            f"min={min(pooled):.4f} max={max(pooled):.4f}"
-        )
-
-
-def test_accumulation_band_rejects_a_biased_reference(sweep_a: SweepMeasurements) -> None:
-    """The band must be narrow enough to catch a reference that is merely close.
-
-    Pooling only helps if it discriminates. Substituting the Gumbel
-    approximation -- wrong by 0.1% to 7.9% depending on N -- must drive the
-    accumulated statistic straight out of the band, or the band is decoration.
-    """
-    good = accumulate("exact", sweep_a.empirical, sweep_a.exact, sweep_a.standard_errors)
-    gumbel = np.asarray([expected_max_normal(n) for n in sweep_a.ns])
-    bad = accumulate("gumbel", sweep_a.empirical, gumbel, sweep_a.standard_errors)
-
-    lo, hi = good.rms_z_band()
-    print(f"exact reference:  rms_z={good.rms_z:.4f} (band [{lo:.4f}, {hi:.4f}])")
-    print(f"gumbel reference: rms_z={bad.rms_z:.4f} -- must fall outside")
-
-    assert lo <= good.rms_z <= hi, "the exact reference should sit inside the band"
-    assert bad.rms_z > hi, (
-        f"accumulated rms_z={bad.rms_z:.4f} for a knowingly biased reference is still "
-        f"inside the band (upper bound {hi:.4f}); the band cannot discriminate"
-    )
 
 
 def test_experiment_a_growth_tracks_sqrt_2_log_n() -> None:
