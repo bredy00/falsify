@@ -1,0 +1,10 @@
+# Normalise line endings in the repository to LF regardless of checkout platform.
+# G10 asserts byte-identical output across runs; a source file that differs
+# between a Windows checkout and the Linux CI runner undermines that before any
+# figure is even generated.
+* text=auto eol=lf
+
+# Binary deliverables and background reading -- never touched.
+*.png binary
+*.pdf binary
+*.parquet binary

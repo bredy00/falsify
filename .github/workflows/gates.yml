@@ -1,0 +1,54 @@
+name: gates
+
+# The gate suite is the specification (03 Part D), so it runs on every push.
+# Phases 0-4 are offline by invariant B1: no network access is needed beyond
+# installing dependencies, and no secrets are used anywhere in this workflow.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Sync locked environment
+        run: uv sync --all-groups --frozen
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Typecheck
+        run: uv run mypy
+
+      - name: Gate suite
+        run: uv run pytest tests/gates -v
+
+      # The figure is a deliverable (Session 1) and G10 will assert it is
+      # byte-reproducible. Keeping it as an artefact makes a CI regression
+      # inspectable rather than merely red.
+      - name: Upload figures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: figures
+          path: docs/figures/
+          if-no-files-found: warn
