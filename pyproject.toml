@@ -63,7 +63,7 @@ strict = true
 warn_unreachable = true
 # The gate suite is the specification (03 Part D), so it is typechecked as
 # strictly as the package it specifies. No per-directory relaxation.
-files = ["falsify", "tests"]
+files = ["falsify", "tests", "scripts"]
 
 [[tool.mypy.overrides]]
 # scipy and matplotlib ship incomplete annotations; their absence must not be

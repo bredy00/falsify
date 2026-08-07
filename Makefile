@@ -37,7 +37,12 @@ gates:
 prop:
 	$(RUN) pytest tests/gates/test_prop.py -v -s
 
-ci: lint typecheck gates
+ci: check-actions lint typecheck gates
+
+# Catches an unresolvable `uses:` ref before a push turns it into a run that dies
+# before executing a step. actionlint does not check this.
+check-actions:
+	$(RUN) python scripts/check_action_refs.py
 
 # The failure CI cannot self-report: a workflow that dies before running a step.
 # Checks the newest run for HEAD actually completed and succeeded.

@@ -36,11 +36,13 @@ jobs:
       - name: Sync locked environment
         run: uv sync --all-groups --frozen
 
-      # Catches a malformed workflow -- the failure mode that killed run
-      # 31202076622 before a single step executed, which no in-repo test could
-      # have detected because the suite never started.
-      - name: Lint workflows
-        uses: raven-actions/actionlint@v2.0.1
+      # Resolves every `uses:` ref in every workflow. This is the countermeasure
+      # for run 31202076622, which died in 3s on an unresolvable action tag
+      # having executed no step. actionlint does NOT catch that -- it never
+      # resolves refs against the remote -- and the action wrapping it crashed
+      # under Node 24, so this does the job directly with git ls-remote.
+      - name: Verify action refs resolve
+        run: uv run python scripts/check_action_refs.py
 
       - name: Lint
         run: uv run ruff check .
