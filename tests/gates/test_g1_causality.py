@@ -7,10 +7,13 @@ without its trap is unverified, which is why 03 Part I forbids splitting them
 across two commits.
 
 The traps are the four classes 02 Part A3 names as passing code review and
-failing G1: a scaler fitted on the whole series, a rolling window with
+failing G1 -- a scaler fitted on the whole series, a rolling window with
 `center=True`, a global-percentile clip, and a warm-up length that depends on a
-whole-series statistic. Plus `LeakyOracle` from Part A4, whose behaviour is more
-interesting than advertised -- see test_leaky_oracle_is_not_a_causality_violation.
+whole-series statistic -- plus a genuine look-ahead oracle.
+
+On A4's `LeakyOracle`: see `test_a4_oracle_does_not_leak_and_has_no_edge`. It is
+kept here as a documented NON-violator, because the reasoning for that ruling is
+worth more than the strategy was.
 """
 
 from __future__ import annotations
@@ -28,7 +31,13 @@ from falsify.core.causality import (
     sample_taus,
 )
 from falsify.core.types import Bars
+from falsify.core.vectorized import run_vectorized
+from falsify.costs import ZERO_COST
+from falsify.features import rolling_mean, shift_one
+from falsify.metrics import annualise_sharpe, sharpe
 from falsify.strategies.base import Strategy
+from falsify.strategies.simple import ZOO, BuyAndHold
+from falsify.synthetic import bars_from_close, gbm
 
 T_BARS = 512
 MASTER_SEED = 20140458
@@ -38,55 +47,7 @@ MASTER_SEED = 20140458
 N_TAUS = 500
 N_SEEDS = 20
 
-
-# --------------------------------------------------------------- causal helpers
-
-
-def rolling_mean(x: NDArray[np.float64], window: int) -> NDArray[np.float64]:
-    """Mean over the `window` bars ending at t. NaN before the first full window."""
-    out = np.full(len(x), np.nan)
-    if window <= len(x):
-        out[window - 1 :] = sliding_window_view(x, window).mean(axis=1)
-    return out
-
-
-def rolling_std(x: NDArray[np.float64], window: int) -> NDArray[np.float64]:
-    """Sample std over the `window` bars ending at t."""
-    out = np.full(len(x), np.nan)
-    if window <= len(x):
-        out[window - 1 :] = sliding_window_view(x, window).std(axis=1, ddof=1)
-    return out
-
-
-def shift_one(x: NDArray[np.float64]) -> NDArray[np.float64]:
-    """Move each value one bar later: the weight held at t was decided at t-1."""
-    out = np.full(len(x), np.nan)
-    out[1:] = x[:-1]
-    return out
-
-
-def bars_from_close(close: Prices) -> Bars:
-    """Build Bars from a close series, strictly per bar.
-
-    Every field is a function of bar t and t-1 only, so this stage cannot itself
-    leak. Deliberately so: if the fixture leaked, every G1 result in this file
-    would be meaningless. The timestamps are a fixed calendar independent of
-    price, which is what a real `align` stage produces (02 Part G).
-    """
-    n = len(close)
-    ts = np.datetime64("2020-01-01", "ns") + np.arange(n) * np.timedelta64(1, "D")
-    open_ = np.empty(n)
-    open_[0] = close[0]
-    open_[1:] = close[:-1]
-    return Bars(
-        ts=ts,
-        open=open_,
-        high=np.maximum(open_, close),
-        low=np.minimum(open_, close),
-        close=close.copy(),
-        volume=np.full(n, 1_000_000.0),
-        adjustment="total_return",
-    )
+HONEST = ZOO
 
 
 def make_pipeline(strategy: Strategy) -> Pipeline:
@@ -105,52 +66,21 @@ def make_pipeline(strategy: Strategy) -> Pipeline:
     return pipeline
 
 
-# ------------------------------------------------------------ honest strategies
+# ------------------------------------------------------- the traps (G7)
 
 
-class BuyAndHold(Strategy):
+class LookAheadOracle(Strategy):
+    """Sets today's weight from tomorrow's move. A genuine A1 violation, and what
+    Part A4 was reaching for when it named a strategy `LeakyOracle`."""
+
     lookback = 1
 
     def signals(self, bars: Bars) -> NDArray[np.float64]:
-        out = np.full(len(bars), 1.0)
-        out[: self.lookback] = np.nan
+        close = bars.close
+        out = np.full(len(close), np.nan)
+        out[self.lookback : -1] = np.sign(close[self.lookback + 1 :] - close[self.lookback : -1])
+        out[-1] = 0.0
         return out
-
-
-class MACrossover(Strategy):
-    """The reference repo's strategy, done correctly: long when the fast mean is
-    above the slow one, with the decision lagged a bar."""
-
-    def __init__(self, fast: int = 20, slow: int = 50) -> None:
-        if fast >= slow:
-            raise ValueError(f"fast={fast} must be below slow={slow}")
-        self.fast, self.slow = fast, slow
-        self.lookback = slow
-
-    def signals(self, bars: Bars) -> NDArray[np.float64]:
-        raw = np.sign(rolling_mean(bars.close, self.fast) - rolling_mean(bars.close, self.slow))
-        return shift_one(raw)
-
-
-class CausalZScore(Strategy):
-    """Mean reversion on a z-score of price against its own trailing window."""
-
-    def __init__(self, window: int = 30) -> None:
-        self.window = window
-        self.lookback = window
-
-    def signals(self, bars: Bars) -> NDArray[np.float64]:
-        mu = rolling_mean(bars.close, self.window)
-        sd = rolling_std(bars.close, self.window)
-        with np.errstate(invalid="ignore", divide="ignore"):
-            z = (bars.close - mu) / sd
-        return shift_one(np.clip(-z, -1.0, 1.0))
-
-
-HONEST: tuple[Strategy, ...] = (BuyAndHold(), MACrossover(), CausalZScore())
-
-
-# ------------------------------------------------------- the traps (G7)
 
 
 class GlobalScalerLeak(Strategy):
@@ -208,8 +138,12 @@ class FutureDependentWarmupLeak(Strategy):
         return raw
 
 
-class LeakyOracle(Strategy):
-    """02 Part A4 verbatim: trades on close[t] at close[t]."""
+class A4LeakyOracle(Strategy):
+    """02 Part A4 verbatim: `sign(diff(close))`.
+
+    Kept as a documented non-violator. See
+    test_a4_oracle_does_not_leak_and_has_no_edge.
+    """
 
     lookback = 1
 
@@ -218,6 +152,7 @@ class LeakyOracle(Strategy):
 
 
 TRAPS: tuple[Strategy, ...] = (
+    LookAheadOracle(),
     GlobalScalerLeak(),
     CenteredWindowLeak(),
     GlobalPercentileClipLeak(),
@@ -273,40 +208,62 @@ def test_g7_leaks_are_caught(strategy: Strategy, prices: Prices) -> None:
         causality_cut_test(make_pipeline(strategy), prices, taus, rng, n_seeds=4)
 
 
-def test_leaky_oracle_is_not_a_causality_violation(prices: Prices) -> None:
-    """02 Part A4 says G1 must catch `LeakyOracle`. It provably cannot, and this
-    records why rather than leaving it as a comment.
+def test_a4_oracle_does_not_leak_and_has_no_edge(prices: Prices) -> None:
+    """The A4 ruling, as executable evidence. Taken 2026-08-08: A1 stands.
 
-    `LeakyOracle` sets the weight at t from close[t] and close[t-1]. Both are
-    inside bars[0:t+1], which the Part A1 contract explicitly permits, and
-    neither is scrambled for t <= tau. So the signal prefix is invariant and G1
-    is silent -- correctly. The one-bar lag is the engine's job (Part D), not the
-    strategy's, and `close_to_close` is a permitted-but-optimistic convention
-    rather than a leak.
+    02 Part A4 asserts G1 must catch `sign(diff(close))` and that a harness which
+    stays silent is broken. The harness is right and the trap was wrong, for two
+    independent reasons this test pins down.
 
-    Scrambling the cut bar itself checks the stricter execution-alignment claim,
-    and there the oracle is caught immediately. Both halves are asserted, so if
-    either behaviour ever changes the build says so.
+    Structurally: close[t] is inside bars[0:t+1], which A1 permits, and every
+    Part D convention lags the weight at least one bar, so the weight earning
+    return t was decided from strictly older bars. G1 is correctly silent.
+
+    Empirically, which is the part that settles it: run through the engine the
+    strategy earns nothing. If it genuinely saw one bar ahead its Sharpe would be
+    enormous -- `LookAheadOracle`, which does, is in TRAPS and G1 rejects it. So
+    tightening A1 to bars[0:t] strictly would have failed every legitimate
+    close_to_close strategy while catching nothing real.
     """
-    pipeline = make_pipeline(LeakyOracle())
+    pipeline = make_pipeline(A4LeakyOracle())
     rng = np.random.default_rng(MASTER_SEED + 4)
     taus = sample_taus(len(prices), 2, rng, n_taus=64)
 
-    # Part A1 contract: silent, because nothing is violated.
+    # 1. Causality: silent, because nothing is violated.
     causality_cut_test(pipeline, prices, taus, rng, n_seeds=4)
 
-    # Execution alignment: caught, because the weight at t needs close[t].
+    # 2. Execution alignment: caught, because the weight at t needs close[t].
     with pytest.raises(CausalityViolation, match="causality violated"):
         causality_cut_test(pipeline, prices, taus, rng, n_seeds=4, include_cut=True)
+
+    # 3. No edge, which is what makes it not an oracle.
+    oracle_sr: list[float] = []
+    hold_sr: list[float] = []
+    for i in range(12):
+        bars = bars_from_close(gbm(0.08, 0.20, 1000, np.random.default_rng(7_000 + i)))
+        for strat, bucket in ((A4LeakyOracle(), oracle_sr), (BuyAndHold(), hold_sr)):
+            result = run_vectorized(bars, strat, ZERO_COST, 10_000.0, "close_to_close")
+            bucket.append(annualise_sharpe(sharpe(result.net_ret[1:])))
+
+    mean_oracle = float(np.mean(oracle_sr))
+    se_oracle = float(np.std(oracle_sr, ddof=1) / np.sqrt(len(oracle_sr)))
+    print(
+        f"A4 sign(diff(close)) through the engine: SR = {mean_oracle:+.3f} +/- {se_oracle:.3f} "
+        f"vs buy-and-hold {float(np.mean(hold_sr)):+.3f} -- not an oracle"
+    )
+    assert abs(mean_oracle) < 4.0, (
+        f"A4's strategy earned SR={mean_oracle:+.3f}; if it really saw ahead this would "
+        "be enormous, and the ruling that it does not leak would need revisiting"
+    )
 
 
 @pytest.mark.parametrize("strategy", HONEST, ids=lambda s: s.name)
 def test_honest_strategies_also_survive_the_strict_cut(
     strategy: Strategy, prices: Prices
 ) -> None:
-    """The honest strategies lag their decisions, so they pass the stricter check
-    too -- which is what makes `shift(1)` a proven claim here rather than an
-    asserted one."""
+    """The honest strategies lag their decisions, so they pass the stricter
+    execution-alignment check too -- which is what makes `shift(1)` a proven claim
+    here rather than an asserted one."""
     rng = np.random.default_rng(MASTER_SEED + 5)
     taus = sample_taus(len(prices), max(strategy.lookback, 2), rng, n_taus=64)
     causality_cut_test(make_pipeline(strategy), prices, taus, rng, n_seeds=4, include_cut=True)

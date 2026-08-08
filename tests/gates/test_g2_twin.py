@@ -32,13 +32,10 @@ from falsify.core.types import Bars, InsufficientHistory
 from falsify.core.vectorized import run_vectorized
 from falsify.costs import ZERO_COST, CostModel
 from falsify.strategies.base import Strategy
-from tests.gates.test_g1_causality import (
-    HONEST,
-    BuyAndHold,
-    CausalZScore,
-    MACrossover,
-    bars_from_close,
-)
+from falsify.strategies.simple import ZOO, BuyAndHold, CausalZScore, MACrossover
+from falsify.synthetic import bars_from_close
+
+HONEST = ZOO
 
 TOLERANCE = 1e-12
 INITIAL_CAPITAL = 10_000.0

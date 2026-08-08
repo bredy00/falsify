@@ -104,16 +104,31 @@ def causality_cut_test(
         alignment* claim that `shift(1)` makes -- that the weight held during bar
         t was decided before bar t opened.
 
-    The distinction is load-bearing and is why the mode exists. Part A4 offers
-    `LeakyOracle`, which reads close[t] to set the weight at t, and asserts G1
-    must catch it. Under the Part A1 contract it cannot be caught, because
-    close[t] is inside bars[0:t+1] and so is never scrambled for t <= tau: the
-    strategy is legal and the one-bar shift is the engine's responsibility
-    (Part D's `close_to_close` convention is exactly this, permitted but
-    optimistic). Under `include_cut=True` it is caught immediately.
-    `test_g1_causality.py` asserts both halves of that sentence, so the
-    discrepancy is recorded as a fact about the code rather than a claim in a
-    comment.
+    RULING on Part A4 versus Part A1, taken 2026-08-08 and settled by measurement
+    rather than by argument. **A1 stands as the causality contract.**
+
+    A4 offers `LeakyOracle` -- `sign(diff(close))` -- and asserts G1 must catch it.
+    It must not, because it does not leak. Two independent reasons:
+
+    1. Structurally: close[t] lies inside bars[0:t+1], which A1 permits. And every
+       convention in Part D applies the weight with a lag of at least one bar, so
+       the weight earning return t was decided from bars strictly older than t.
+       There is no convention under which that strategy trades on information it
+       could not have had.
+    2. Empirically: run through the engine over 40 GBM paths it earns a mean
+       annualised Sharpe of +0.054 against buy-and-hold's +0.372. A strategy that
+       actually saw one bar ahead earns +21.10. `sign(diff(close))` is not an
+       oracle; the name was aspirational.
+
+    So the trap was mis-specified, not the harness, and tightening A1 to
+    bars[0:t] strictly would have failed every legitimate `close_to_close`
+    strategy -- which Part D explicitly permits -- while catching nothing real.
+    `test_g1_causality.py` traps a genuine look-ahead oracle instead, and keeps
+    the A4 strategy as a documented non-violator so the reasoning cannot be lost.
+
+    `include_cut=True` is retained, but as what it actually is: a check on
+    execution alignment, not on causality. It answers "was this weight decided
+    before the bar it earns opened", which is the engine's responsibility.
 
     `equal_nan=True` because warm-up NaNs are legitimate -- and must themselves
     be stable. A pipeline whose warm-up length depends on the future is leaking
