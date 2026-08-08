@@ -93,32 +93,79 @@ Numeric output and the figure's bytes are identical across two runs at the same 
 
 ## Gate status
 
-117 tests, ~40 s, offline. `make ci` runs exactly what CI runs.
+149 tests, ~51 s, entirely offline. `make ci` runs exactly what CI runs.
 
 | Gate | Statement | Status |
 |---|---|---|
 | **0.0** | Reproduce the propositions before building anything | **green** — see above |
 | **G1** | Causality: scramble the future, the past stays bit-identical | **green** — 500 cuts × 20 seeds per strategy |
-| **G7** | Leakage trap: deliberately leaky pipelines must be caught | **green** — 4 of `02` A3's classes rejected |
 | **G2** | Twin engines agree to 1e-12 | **green** — `0.000e+00`, exact |
-| G3 | Analytic recovery on synthetic GBM | not started |
-| G4 | Zero-cost identity | partial — asserted for buy-and-hold under all three conventions |
-| G5 | Cost monotonicity, break-even cost | not started |
-| G6 | Null calibration, 1,000 coin flips | not started |
+| **G3** | Analytic recovery on synthetic GBM | **green** — two Sharpe conventions, vol, drift |
+| **G4** | Zero-cost identity | **green** — bitwise, both engines, all conventions |
+| **G5** | Cost monotonicity, break-even cost | **green** — c\* = 27.03 bps per turn |
+| **G7** | Leakage trap: deliberately leaky pipelines must be caught | **green** — 5 traps rejected |
+| G6 | Null calibration, 1,000 coin flips | next — needs the data layer |
 | G8 | Purged, embargoed walk-forward | not started |
 | G9 | PBO via CSCV, built on `SelectionRule` | interface ready, gate not started |
-| G10 | Reproducibility from pinned hashes | partial — figure bytes and numeric output stable across runs |
+| G10 | Reproducibility from pinned hashes | partial — figure bytes and numeric output stable |
 
-**G2 came out exact rather than merely within tolerance.** The two engines are written
-independently — the event engine loops bar by bar over hard-sliced prefixes, the vectorised one uses
-whole-series rolling operations and array arithmetic — and they share nothing but the warm-up index.
-Agreement is bitwise across the strategy zoo, all three execution conventions, and a cost sweep to
-125 bps. A planted one-bar engine disagreement is detected at `7.4e-02`, so the gate discriminates
-rather than passing vacuously.
+Everything through G5 runs with no network, no API key and no rate limit. That is the whole point of
+the ordering in `00`: the certified core is testable in CI without a single flaky test that fails
+because Yahoo timed out.
+
+### G2 came out exact, not merely within tolerance
+
+The two engines are written independently — the event engine loops bar by bar over hard-sliced
+prefixes, the vectorised one uses whole-series rolling operations and array arithmetic — and they
+share nothing but the warm-up index. Agreement is bitwise across the strategy zoo, all three
+execution conventions, and a cost sweep to 125 bps. A planted one-bar engine disagreement is caught
+at `7.4e-02`, so the gate discriminates rather than passing vacuously.
 
 The three conventions are genuinely distinct on the same series: `close_to_close` 12924.37,
-`next_open` 12915.83, `next_close` 11688.41. That spread is execution-assumption risk, and `02`
-Part D wants it as a figure.
+`next_open` 12915.83, `next_close` 11688.41. That spread is execution-assumption risk.
+
+### G3 recovers known truth, in both directions
+
+| Quantity | Measured (200 paths) | True value | Gap |
+|---|---|---|---|
+| Simple-return Sharpe | +0.37513 ± 0.02358 | `μ/σ` = 0.40 | 1.05 SE |
+| Log-return Sharpe | +0.27461 ± 0.02364 | `(μ−σ²/2)/σ` = 0.30 | 1.07 SE |
+| Annualised vol | 0.20018 ± 0.00020 | `σ` = 0.20 | 0.09% rel |
+| Annualised log drift | +0.05502 ± 0.00474 | `μ−σ²/2` = 0.06 | 1.05 SE |
+
+**Both Sharpe conventions are asserted, and that is deliberate.** `00` Gate 0.1 states the true
+Sharpe is 0.30 and warns that 0.40 means you used `μ` instead of `μ−σ²/2`. Both numbers are right,
+for different estimators: the Sharpe of *log* returns is 0.30, the Sharpe of *simple* returns is
+`μ/σ` = 0.40, because `E[exp(g)−1] = μ/252` exactly. Part E's equity recursion compounds simple
+returns, so the engine measures 0.40 and is correct to — asserting 0.30 against it would reject a
+working engine. Pinning both means confusing them fails one direction or the other, which is what
+the gate was reaching for.
+
+Two companions ship with it. The Monte Carlo standard error falls with a log-log slope of
+**−0.5173** (r² = 0.997), confirming `1/√M` — that is the *estimator* error, reducible by
+simulation, and not the estimate error, which shrinks only with history. And the power test:
+mean reversion earns **+0.0051 ± 0.0738 on GBM** but **+1.1534 ± 0.0703 on a stationary AR(1)**.
+The first says the engine invents no edge; the second says it does not destroy edge that exists,
+which no real-data test can establish because there "found nothing" is always a plausible answer.
+
+### G5 — the number that matters
+
+Break-even cost **c\* = 27.03 bps per turn**, verified to separate profit from loss: +0.35 Sharpe at
+half of c\*, −0.35 at 1.5×. Net Sharpe is monotone non-increasing across 0–100 bps, and
+buy-and-hold's Sharpe moves by exactly `0.000e+00` across the whole sweep, which confirms cost is
+charged on traded notional rather than on portfolio return. Faster rules die sooner: at 135 turns a
+year the strategy is unprofitable even for free, at 49 turns it survives to 78 bps.
+
+### The A4 ruling
+
+`02` Part A4 asserts G1 must catch `LeakyOracle` — `sign(diff(close))` — and that a silent harness
+is broken. **Ruled 2026-08-08: A1 stands, and the trap was mis-specified.** `close[t]` lies inside
+`bars[0:t+1]`, which A1 permits, and every Part D convention lags the weight at least one bar, so
+that strategy never trades on information it could not have had. Measured through the engine it
+earns **+0.054** annualised Sharpe against buy-and-hold's +0.372; a strategy that genuinely sees one
+bar ahead earns **+21.10**. Tightening A1 would have failed every legitimate `close_to_close`
+strategy while catching nothing real. G7 now traps a true look-ahead oracle, and the A4 strategy is
+kept as a documented non-violator so the reasoning is not lost.
 
 ---
 

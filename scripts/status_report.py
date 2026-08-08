@@ -210,13 +210,13 @@ def story() -> list[Any]:
                     p("<b>Latest</b>", S.cell),
                     p(subject, S.cell_mono),
                     p("<b>CI</b>", S.cell),
-                    p("green in 43 s · 5 checks · offline", S.cell),
+                    p("green · 5 checks · offline, no secrets", S.cell),
                 ],
                 [
                     p("<b>Code</b>", S.cell),
-                    p("819 package · 1,477 test · 84 script LOC", S.cell),
+                    p("~1,500 package · ~2,400 test LOC", S.cell),
                     p("<b>Quality</b>", S.cell),
-                    p("ruff clean · mypy --strict clean (22 files)", S.cell),
+                    p("ruff clean · mypy --strict clean (30 files)", S.cell),
                 ],
             ],
             [20 * mm, 62 * mm, 20 * mm, 72 * mm],
@@ -224,10 +224,10 @@ def story() -> list[Any]:
         ),
         Spacer(1, 10),
         p(
-            "Four sessions in. Gate 0.0, G1, G7 and G2 are green, the engine core is certified "
-            "and still entirely offline, and no market data has entered the system — invariant B1 "
-            "holds. The headline result of the session is that <b>G2 came out exact</b> rather than "
-            "merely inside tolerance: two independently written engines agree bitwise.",
+            "Five sessions in. <b>Gate 0.0, G1, G2, G3, G4, G5 and G7 are green</b> — the entire "
+            "certified offline core. No market data has entered the system, so invariant B1 still "
+            "holds, and everything to date runs in CI with no network, no API key and no rate "
+            "limit. G6 is next and is the first gate that needs the data layer.",
             S.lede,
         ),
     ]
@@ -255,25 +255,27 @@ def story() -> list[Any]:
                 ],
                 [
                     p("G3", S.cell), p("Analytic recovery on synthetic GBM", S.cell),
-                    status_chip("not started"), p("next session", S.cell),
+                    status_chip("green"),
+                    p("both Sharpe conventions, vol, drift; 1/sqrt(M); power test", S.cell),
                 ],
                 [
                     p("G4", S.cell), p("Zero-cost identity", S.cell),
-                    status_chip("partial"),
-                    p("exact float equality for buy-and-hold, all conventions", S.cell),
+                    status_chip("green"),
+                    p("bitwise, both engines, all three conventions", S.cell),
                 ],
                 [
                     p("G5", S.cell), p("Cost monotonicity, break-even cost", S.cell),
-                    status_chip("not started"), p("next session", S.cell),
+                    status_chip("green"),
+                    p("monotone 0-100 bps; c* = 27.03 bps per turn", S.cell),
                 ],
                 [
                     p("G6", S.cell), p("Null calibration, 1,000 coin flips", S.cell),
-                    status_chip("not started"), p("needs the data layer first", S.cell),
+                    status_chip("not started"), p("next; first gate needing the data layer", S.cell),
                 ],
                 [
                     p("G7", S.cell), p("Leakage trap must fire", S.cell),
                     status_chip("green"),
-                    p("4 of 02 A3's classes rejected; oracle case resolved", S.cell),
+                    p("5 traps rejected; A4 oracle case ruled on", S.cell),
                 ],
                 [
                     p("G8", S.cell), p("Purged, embargoed walk-forward", S.cell),
@@ -339,6 +341,65 @@ def story() -> list[Any]:
             "proves the harness can fail. The equity path is an explicit loop in <i>both</i> "
             "engines because it is not a cumprod — cost[t] depends on equity[t−1], and Part F2's "
             "approximate route carries error of order cost² that would never survive 1e-12.",
+        ),
+    ]
+
+    # -------------------------------------------------------------- G3 and G5
+    out += [
+        p("G3 and G5 — recovery and the cost of turnover", S.h2),
+        table(
+            [
+                ["Quantity", "Measured", "True value", "Gap"],
+                [
+                    p("Simple-return Sharpe, 200 paths", S.cell),
+                    p("+0.37513 +/- 0.02358", S.cell_mono),
+                    p("mu/sigma = 0.40", S.cell_mono), p("1.05 SE", S.cell),
+                ],
+                [
+                    p("Log-return Sharpe, 200 paths", S.cell),
+                    p("+0.27461 +/- 0.02364", S.cell_mono),
+                    p("(mu-s^2/2)/sigma = 0.30", S.cell_mono), p("1.07 SE", S.cell),
+                ],
+                [
+                    p("Annualised volatility", S.cell),
+                    p("0.20018 +/- 0.00020", S.cell_mono),
+                    p("sigma = 0.20", S.cell_mono), p("0.09% rel", S.cell),
+                ],
+                [
+                    p("Annualised log drift", S.cell),
+                    p("+0.05502 +/- 0.00474", S.cell_mono),
+                    p("mu - s^2/2 = 0.06", S.cell_mono), p("1.05 SE", S.cell),
+                ],
+                [
+                    p("Monte Carlo SE scaling", S.cell),
+                    p("slope -0.5173, r^2 = 0.997", S.cell_mono),
+                    p("-0.5 exactly", S.cell_mono), p("confirms 1/sqrt(M)", S.cell),
+                ],
+                [
+                    p("Mean reversion on GBM", S.cell),
+                    p("+0.0051 +/- 0.0738", S.cell_mono),
+                    p("0 -- no edge exists", S.cell_mono), p("invents none", S.cell),
+                ],
+                [
+                    p("Mean reversion on AR(1), phi=0.95", S.cell),
+                    p("+1.1534 +/- 0.0703", S.cell_mono),
+                    p("> 0 -- edge exists", S.cell_mono), p("16 SE, finds it", S.cell),
+                ],
+                [
+                    p("<b>Break-even cost c*</b>", S.cell),
+                    p("<b>27.03 bps / turn</b>", S.cell_mono),
+                    p("at 68.8 turns/yr", S.cell_mono), p("+0.35 SR at c*/2", S.cell),
+                ],
+            ],
+            [50 * mm, 44 * mm, 44 * mm, 36 * mm],
+        ),
+        Spacer(1, 4),
+        p(
+            "The last two rows are the pair that matters and the one people skip. 0.1 shows the "
+            "engine does not invent edge; 0.3 shows it does not destroy edge that exists. A framework "
+            "failing to find signal in a series that provably contains signal is broken in a way no "
+            "real-data test reveals, because on real data “found nothing” is always a "
+            "plausible answer.",
         ),
     ]
 
@@ -457,14 +518,32 @@ def story() -> list[Any]:
                     ),
                 ],
                 [
-                    p("02 Part A4's oracle trap resolved", S.cell),
+                    p("<b>02 Part A4 vs A1 — ruled: A1 stands</b>", S.cell),
                     p(
-                        "A4 asserts G1 must catch LeakyOracle. It provably cannot: close[t] lies "
-                        "inside bars[0:t+1], which the Part A1 contract permits, and is never "
-                        "scrambled for t ≤ τ. The strategy is legal and the one-bar lag is the "
-                        "engine's job. The harness now takes both cuts and asserts both behaviours, "
-                        "so the discrepancy is a property of the code rather than a claim in a "
-                        "comment. <b>Open for your ruling</b> if you would rather tighten A1.",
+                        "A4 asserts G1 must catch LeakyOracle, sign(diff(close)). It must not, "
+                        "because that strategy does not leak. close[t] lies inside bars[0:t+1], "
+                        "which A1 permits, and every Part D convention lags the weight at least one "
+                        "bar, so the weight earning return t was decided from strictly older bars. "
+                        "Measured through the engine it earns +0.054 annualised Sharpe against "
+                        "buy-and-hold's +0.372; a strategy that genuinely sees one bar ahead earns "
+                        "+21.10. So the trap was mis-specified, not the harness, and tightening A1 "
+                        "to bars[0:t] would have failed every legitimate close_to_close strategy — "
+                        "which Part D explicitly permits — while catching nothing real. G7 now traps "
+                        "a true look-ahead oracle; the A4 strategy is kept as a documented "
+                        "non-violator so the reasoning survives.",
+                        S.cell,
+                    ),
+                ],
+                [
+                    p("Sharpe is asserted on both return conventions", S.cell),
+                    p(
+                        "00 Gate 0.1 states the true Sharpe is 0.30 and warns that 0.40 means μ was "
+                        "used instead of μ−σ²/2. Both are right, for different estimators: log "
+                        "returns give (μ−σ²/2)/σ = 0.30, simple returns give μ/σ = 0.40, because "
+                        "E[exp(g)−1] = μ/252 exactly. Part E compounds simple returns, so the engine "
+                        "measures 0.40 and is correct to — asserting 0.30 against it would reject a "
+                        "working engine. Both targets are now pinned, so confusing them fails one "
+                        "direction or the other.",
                         S.cell,
                     ),
                 ],
@@ -549,28 +628,31 @@ def story() -> list[Any]:
 
     # ---------------------------------------------------------- next session
     out += [
-        p("Next session", S.h2),
+        p("Next session — G6, and the first network call", S.h2),
         p(
-            "Per 03 Part C: <b>G3 + G4 + G5 together</b>, all three small. G3 is genuinely easy now "
-            "that the synthetic generators and both engines exist — generate GBM at known μ and σ, "
-            "run buy-and-hold through the engine, and confirm the estimated annualised Sharpe "
-            "recovers (μ − σ²/2)/σ = 0.30 within 2 SE over 200 paths. G4 is one assertion beyond "
-            "what already passes. G5 is a cost sweep plus a np.diff(...) ≤ 0 check, and it yields "
-            "break-even cost — the single most useful number in the eventual report.",
+            "The certified offline core is complete, which means the ordering rule in 00 has been "
+            "satisfied: the engine has recovered known parameters from synthetic data with known "
+            "truth, so real market data is now allowed to enter the system. Everything to this point "
+            "was built without a single network call.",
         ),
         p(
-            "That completes the certified offline core. <b>The first network call comes after it</b>, "
-            "and not before: B1 holds until Gate 0 is green.",
+            "G6 is null calibration — a thousand coin-flip strategies through the whole pipeline, "
+            "their Sharpe distribution forming the empirical null that the real result must beat. "
+            "The compute is trivial; 03 Part C is explicit that the one genuinely hard part is "
+            "<b>turnover matching</b>. A random strategy that flips every bar has enormous turnover "
+            "and gets destroyed by costs, which would make the real strategy look good for entirely "
+            "the wrong reason. The null has to trade at the same rate as the thing it is testing — a "
+            "Markov chain whose transition probability is tuned until realised turnover matches "
+            "within 5%, asserted in the test.",
         ),
         Spacer(1, 8),
         KeepTogether([
-            p("Open question for you", S.h3),
+            p("What G5 already tells us about G6", S.h3),
             p(
-                "02 Part A4 versus Part A1 — whether to tighten the causality contract so that a "
-                "signal at bar t may use only bars[0:t] strictly. Tightening it would make "
-                "LeakyOracle a G1 failure as A4 intends, but it would also fail any legitimate "
-                "close_to_close strategy, which Part D explicitly permits. Both readings are "
-                "currently implemented and asserted; the default is Part A1. One line changes it.",
+                "Break-even cost is 27.03 bps per turn at 68.8 turns a year, and a rule trading 135 "
+                "times a year is unprofitable even for free. So turnover matching is not a "
+                "formality here — it is the difference between a calibrated null and a flattering "
+                "one, and the numbers to match against already exist.",
             ),
         ]),
     ]

@@ -17,8 +17,8 @@ import pytest
 # Guards against catastrophic silent loss, not against ordinary churn: set below
 # the current count so adding or removing a few tests needs no edit, but losing a
 # whole file fails loudly. Raise it as the suite grows.
-# 117 collected at G2 (Gate 0.0, G1, G7, G2, selection, action refs).
-DEFAULT_MIN_COLLECTED = 105
+# 149 collected at G5 (Gate 0.0-0.4, G1-G5, G7, selection, action refs).
+DEFAULT_MIN_COLLECTED = 135
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
