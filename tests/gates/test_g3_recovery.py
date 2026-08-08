@@ -49,6 +49,9 @@ from falsify.metrics import (
     annualised_vol,
     cagr,
     elapsed_years,
+    gbm_log_return_sharpe,
+    gbm_simple_return_sharpe,
+    gbm_simple_return_vol,
     max_drawdown,
     sharpe,
     sharpe_se,
@@ -65,9 +68,16 @@ BPY = 252
 CAPITAL = 10_000.0
 MASTER_SEED = 50_000
 
-TRUE_SIMPLE_SR = MU / SIGMA  # 0.40
-TRUE_LOG_SR = (MU - 0.5 * SIGMA * SIGMA) / SIGMA  # 0.30
+# Exact lognormal values, not the first-order approximations. The approximations
+# mu/sigma = 0.400000 and sigma = 0.200000 are off by 0.020% and 0.035%
+# respectively -- immaterial against sampling error at 200 paths, but a gate whose
+# job is known-truth recovery should compare against the truth.
+TRUE_SIMPLE_SR = gbm_simple_return_sharpe(MU, SIGMA)  # 0.399921
+TRUE_LOG_SR = gbm_log_return_sharpe(MU, SIGMA)  # 0.300000, exact by construction
+TRUE_SIMPLE_VOL = gbm_simple_return_vol(MU, SIGMA)  # 0.200071
 TRUE_LOG_DRIFT = MU - 0.5 * SIGMA * SIGMA  # 0.06
+# mu/sigma - (mu - sigma^2/2)/sigma = sigma/2, exactly.
+TRUE_SHARPE_GAP = 0.5 * SIGMA  # 0.10
 
 
 def mean_se(x: NDArray[np.float64]) -> tuple[float, float]:
@@ -112,15 +122,16 @@ def ensemble() -> dict[str, NDArray[np.float64]]:
 
 
 def test_g3_recovers_simple_return_sharpe(ensemble: dict[str, NDArray[np.float64]]) -> None:
-    """The engine compounds simple returns, so it must recover mu/sigma = 0.40."""
+    """The engine compounds simple returns, so it must recover the exact lognormal
+    simple-return Sharpe -- 0.399921, not the first-order mu/sigma = 0.400000."""
     mean, se = mean_se(ensemble["simple_sr"])
     gap = abs(mean - TRUE_SIMPLE_SR) / se
     print(
-        f"simple-return SR: {mean:+.5f} +/- {se:.5f}  target {TRUE_SIMPLE_SR:+.5f}  "
-        f"gap {gap:.2f} SE"
+        f"simple-return SR: {mean:+.6f} +/- {se:.6f}  exact {TRUE_SIMPLE_SR:+.6f}  "
+        f"gap {gap:.2f} SE  (first-order mu/sigma = {MU / SIGMA:.6f})"
     )
     assert gap < 2.0, (
-        f"ensemble mean {mean:+.5f} is {gap:.1f} SE from mu/sigma = {TRUE_SIMPLE_SR}. "
+        f"ensemble mean {mean:+.6f} is {gap:.1f} SE from the exact value {TRUE_SIMPLE_SR:.6f}. "
         "If it landed near 0.30 the Sharpe is being computed on log returns while the "
         "equity path compounds simple ones."
     )
@@ -135,8 +146,8 @@ def test_g3_recovers_log_return_sharpe(ensemble: dict[str, NDArray[np.float64]])
     """
     mean, se = mean_se(ensemble["log_sr"])
     gap = abs(mean - TRUE_LOG_SR) / se
-    print(f"log-return SR:    {mean:+.5f} +/- {se:.5f}  target {TRUE_LOG_SR:+.5f}  gap {gap:.2f} SE")
-    assert gap < 2.0, f"ensemble mean {mean:+.5f} is {gap:.1f} SE from {TRUE_LOG_SR}"
+    print(f"log-return SR:    {mean:+.6f} +/- {se:.6f}  exact {TRUE_LOG_SR:+.6f}  gap {gap:.2f} SE")
+    assert gap < 2.0, f"ensemble mean {mean:+.6f} is {gap:.1f} SE from {TRUE_LOG_SR}"
 
     separation = abs(TRUE_SIMPLE_SR - TRUE_LOG_SR)
     assert separation > 3.0 * se, (
@@ -145,13 +156,60 @@ def test_g3_recovers_log_return_sharpe(ensemble: dict[str, NDArray[np.float64]])
     )
 
 
+def test_g3_the_two_sharpe_conventions_differ_by_sigma_over_two(
+    ensemble: dict[str, NDArray[np.float64]],
+) -> None:
+    """The sharpest check in this file, and the one that stops the two conventions
+    ever being confused.
+
+        mu/sigma - (mu - sigma^2/2)/sigma = sigma/2,  exactly.
+
+    Measured as a PAIRED difference on the same paths, so the path-to-path noise
+    that dominates each level test cancels almost entirely -- the SE here is two
+    orders of magnitude smaller than on either Sharpe alone. That makes it a far
+    tighter constraint on the pair than the individual assertions are on either
+    member, and it is why asserting both conventions is what *prevents* a mix-up
+    rather than inviting one: swapping them, or applying one estimator's
+    annualisation to the other's returns, moves this difference off sigma/2 and
+    fails here even when both level tests still pass.
+    """
+    diff = ensemble["simple_sr"] - ensemble["log_sr"]
+    mean, se = mean_se(diff)
+    gap = abs(mean - TRUE_SHARPE_GAP) / se
+    print(
+        f"paired SR gap:    {mean:+.6f} +/- {se:.6f}  exact sigma/2 = {TRUE_SHARPE_GAP:+.6f}  "
+        f"gap {gap:.2f} SE  ({se / mean_se(ensemble['simple_sr'])[1]:.1%} of the level SE)"
+    )
+    assert gap < 4.0, (
+        f"the two Sharpe conventions differ by {mean:+.6f}, not sigma/2 = {TRUE_SHARPE_GAP}. "
+        "Either they are being computed on the same returns, or an annualisation is "
+        "being applied to the wrong series."
+    )
+    assert se < 0.1 * mean_se(ensemble["simple_sr"])[1], (
+        "the paired difference should be far less noisy than either level; if it is not, "
+        "the two are not being measured on the same paths and the pairing buys nothing"
+    )
+
+
 def test_g3_recovers_volatility(ensemble: dict[str, NDArray[np.float64]]) -> None:
-    """Annualised vol within 1% relative. Catches a sqrt(365) annualisation, which
-    would never be visible on real data."""
+    """Annualised vol against the exact lognormal value, not against sigma.
+
+    `sigma` is the volatility of the LOG returns. The simple returns the engine
+    compounds are lognormal and right-skewed, so their volatility is slightly
+    higher -- 0.200071 against 0.200000. Both the spec's 1% relative band and a
+    3 SE statistical bound are asserted; the second is roughly five times tighter
+    and is what actually constrains the number.
+    """
     mean, se = mean_se(ensemble["vol"])
-    rel = abs(mean - SIGMA) / SIGMA
-    print(f"annualised vol:   {mean:.5f} +/- {se:.5f}  target {SIGMA:.5f}  rel {rel:.3%}")
-    assert rel < 0.01, f"annualised vol {mean:.5f} is {rel:.2%} from sigma = {SIGMA}"
+    rel = abs(mean - TRUE_SIMPLE_VOL) / TRUE_SIMPLE_VOL
+    gap = abs(mean - TRUE_SIMPLE_VOL) / se
+    print(
+        f"annualised vol:   {mean:.6f} +/- {se:.6f}  exact {TRUE_SIMPLE_VOL:.6f}  "
+        f"rel {rel:.3%}  gap {gap:.2f} SE  (log-return sigma = {SIGMA:.6f})"
+    )
+    assert rel < 0.01, f"annualised vol {mean:.6f} is {rel:.2%} from {TRUE_SIMPLE_VOL:.6f}"
+    assert gap < 3.0, f"annualised vol is {gap:.1f} SE from the exact lognormal value"
+
     wrong = SIGMA * math.sqrt(365.0 / 252.0)
     assert abs(mean - wrong) > 10.0 * se, "a sqrt(365) annualisation would not be distinguishable"
 

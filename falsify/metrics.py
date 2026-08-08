@@ -73,6 +73,53 @@ def sharpe_se(returns: Series, bars_per_year: int | None = None) -> float:
     return se * math.sqrt(bars_per_year) if bars_per_year else se
 
 
+def gbm_simple_return_sharpe(mu: float, sigma: float, bars_per_year: int = BARS_PER_YEAR) -> float:
+    """Exact annualised Sharpe of the SIMPLE returns of a GBM. No approximation.
+
+    A simple return is `exp(g) - 1` for a normal log return `g ~ N(m, s^2)`, i.e.
+    lognormal, so its moments are known in closed form:
+
+        E[r]  = exp(m + s^2/2) - 1
+        sd[r] = exp(m + s^2/2) * sqrt(exp(s^2) - 1)
+
+    The convenient first-order answer is `mu/sigma`, which is what most write down
+    and what this gate used to assert. It is off by 0.02% at mu=0.08, sigma=0.20 --
+    immaterial against sampling error, but a known-truth gate should compare
+    against truth rather than against a good approximation to it, and the exact
+    form costs three lines.
+    """
+    m = (mu - 0.5 * sigma * sigma) / bars_per_year
+    s2 = sigma * sigma / bars_per_year
+    scale = math.exp(m + 0.5 * s2)
+    mean = scale - 1.0
+    sd = scale * math.sqrt(math.expm1(s2))
+    return mean / sd * math.sqrt(bars_per_year)
+
+
+def gbm_log_return_sharpe(mu: float, sigma: float, bars_per_year: int = BARS_PER_YEAR) -> float:
+    """Exact annualised Sharpe of the LOG returns of a GBM: (mu - sigma^2/2)/sigma.
+
+    Exact with no correction needed, because log returns are exactly normal. The
+    gap to `gbm_simple_return_sharpe` is exactly sigma/2 -- see
+    test_g3_recovery.test_g3_the_two_sharpe_conventions_differ_by_sigma_over_two,
+    which is the sharpest check in the file precisely because the difference is
+    measured on the same paths and the sampling noise cancels.
+    """
+    del bars_per_year  # the ratio is scale-free in the annualisation
+    return (mu - 0.5 * sigma * sigma) / sigma
+
+
+def gbm_simple_return_vol(mu: float, sigma: float, bars_per_year: int = BARS_PER_YEAR) -> float:
+    """Exact annualised volatility of the SIMPLE returns of a GBM.
+
+    Slightly above `sigma` -- 0.200071 against 0.200000 at sigma = 0.20 -- because
+    the lognormal is right-skewed. `sigma` is the volatility of the LOG returns.
+    """
+    m = (mu - 0.5 * sigma * sigma) / bars_per_year
+    s2 = sigma * sigma / bars_per_year
+    return math.exp(m + 0.5 * s2) * math.sqrt(math.expm1(s2)) * math.sqrt(bars_per_year)
+
+
 def annualised_vol(returns: Series, bars_per_year: int = BARS_PER_YEAR) -> float:
     if len(returns) < 2:
         return float("nan")

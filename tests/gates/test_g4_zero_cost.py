@@ -17,13 +17,15 @@ What it pins down:
 from __future__ import annotations
 
 import numpy as np
+import numpy.typing as npt
 import pytest
 
-from falsify.core.conventions import CONVENTIONS, Convention
-from falsify.core.event import benchmark_equity, run_event
+from falsify.core.conventions import CONVENTIONS, Convention, fill_prices, signal_lag
+from falsify.core.event import benchmark_equity, run_event, warmup_start
 from falsify.core.types import Bars
 from falsify.core.vectorized import run_vectorized
 from falsify.costs import ZERO_COST, CostModel
+from falsify.strategies.base import Strategy
 from falsify.strategies.simple import BuyAndHold, Flat
 from falsify.synthetic import bars_from_close, gbm
 
@@ -31,6 +33,30 @@ CAPITAL = 10_000.0
 SEED = 4_040
 
 ENGINES = (run_event, run_vectorized)
+
+
+class ConstantWeight(Strategy):
+    """A fixed exposure held forever -- never trades after the anchor bar.
+
+    Exists because the gate as originally written only ever exercised w = 1, so a
+    weight that was propagated, scaled or signed incorrectly at any other exposure
+    would have slipped past G4 entirely. G2 and G3 would eventually have caught it,
+    but G4 is the gate whose job is the accounting identity, and an identity that
+    holds only at w = 1 is not an identity.
+    """
+
+    def __init__(self, weight: float) -> None:
+        self.weight = weight
+        self.lookback = 1
+
+    @property
+    def name(self) -> str:
+        return f"ConstantWeight({self.weight:+g})"
+
+    def signals(self, bars: Bars) -> npt.NDArray[np.float64]:
+        out = np.full(len(bars), self.weight)
+        out[: self.lookback] = np.nan
+        return out
 
 
 @pytest.fixture(scope="module")
@@ -86,6 +112,98 @@ def test_g4_flat_position_at_zero_cost_and_zero_yield_is_flat(
     assert np.all(result.equity == CAPITAL), "flat equity moved"
     assert np.all(result.gross_ret == 0.0)
     assert np.all(result.net_ret == 0.0)
+
+
+@pytest.mark.parametrize("weight", [1.0, 0.5, 0.25, -0.5, -1.0])
+@pytest.mark.parametrize("convention", CONVENTIONS)
+@pytest.mark.parametrize("engine", ENGINES, ids=lambda e: e.__name__)
+def test_g4_constant_weight_compounds_exactly_one_plus_w_times_r(
+    engine: object, convention: Convention, weight: float, bars: Bars
+) -> None:
+    """The identity generalised off w = 1, which is the coverage G4 was missing.
+
+    A constant exposure never trades after the anchor, so at zero cost the equity
+    path must be `capital * prod(1 + w*r)`. That is checked with `np.cumprod`,
+    which is a genuinely independent formulation rather than a copy of the engine's
+    loop.
+
+    The tolerance is ulp-scale rather than exact, and the reason is worth stating
+    because it is easy to mistake for a defect. `cumprod` forms the product of the
+    growth factors and scales by capital once at the end; the engine multiplies the
+    running equity at every step. Those associate the multiplications differently,
+    and floating-point multiplication is not associative -- so the two agree to
+    about 1e-15 and cannot agree bitwise. Requiring exactness here would be
+    requiring that multiplication be associative. The comparison against
+    `benchmark_equity` elsewhere in this file *is* exact, because there both curves
+    are sequential recursions from the same base and the association matches.
+
+    This is what catches a weight applied with the wrong sign, scaled by exposure
+    twice, or aligned a bar off at fractional exposure -- none of which w = 1 can
+    reveal, because 1 is a fixed point of most of those mistakes.
+    """
+    strategy = ConstantWeight(weight)
+    result = engine(bars, strategy, ZERO_COST, CAPITAL, convention)  # type: ignore[operator]
+
+    price = fill_prices(bars, convention)
+    start = warmup_start(strategy.lookback, signal_lag(convention))
+    r = price[start + 1 : len(bars)] / price[start : len(bars) - 1] - 1.0
+    expected = CAPITAL * np.cumprod(np.concatenate(([1.0], 1.0 + weight * r)))
+
+    assert np.all(result.weights == weight), "a constant strategy produced varying weights"
+    assert np.all(result.turnover == 0.0), "a constant weight must never trade after the anchor"
+    assert np.all(result.costs == 0.0)
+
+    deviation = float(np.max(np.abs(result.equity - expected) / expected))
+    assert deviation < 1e-13, (
+        f"w={weight:+g}/{convention}: equity departs from capital*prod(1 + w*r) by "
+        f"{deviation:.3e}, far above the ~1e-15 that reassociating the multiplications "
+        "explains. At this size it is an accounting error, not rounding."
+    )
+
+
+@pytest.mark.parametrize("weight", [0.5, -0.75])
+def test_g4_both_engines_agree_on_the_weight_array_itself(weight: float, bars: Bars) -> None:
+    """G2 compares equity; this compares the weights that produced it.
+
+    The event engine derives each weight from a hard-sliced prefix and the
+    vectorised one slices a whole-series array, so agreement here is a statement
+    about the alignment arithmetic rather than about the accounting.
+    """
+    strategy = ConstantWeight(weight)
+    for convention in CONVENTIONS:
+        a = run_event(bars, strategy, ZERO_COST, CAPITAL, convention)
+        b = run_vectorized(bars, strategy, ZERO_COST, CAPITAL, convention)
+        assert np.array_equal(a.weights, b.weights), f"weights differ under {convention}"
+        assert len(a.weights) == len(b.weights) == len(a.equity)
+
+
+def test_g4_short_position_pays_borrow_and_earns_no_cash() -> None:
+    """The signed terms of the Part E gross return, isolated.
+
+    At w = -1: exposure is 1 so the cash term is zero, and the short leg pays
+    borrow. Getting `max(-w, 0)` backwards would credit borrow to a long position
+    and charge it to a short one -- and the equity curve would still look
+    plausible, which is why it is asserted rather than eyeballed.
+    """
+    bars = bars_from_close(gbm(0.08, 0.20, 300, np.random.default_rng(SEED + 3)))
+    borrow_bps = 500.0
+    per_bar = borrow_bps / 10_000.0 / 252.0
+
+    short = run_vectorized(
+        bars, ConstantWeight(-1.0), CostModel(borrow_bps_annual=borrow_bps), CAPITAL, "next_open"
+    )
+    short_free = run_vectorized(bars, ConstantWeight(-1.0), ZERO_COST, CAPITAL, "next_open")
+    long_paid = run_vectorized(
+        bars, ConstantWeight(1.0), CostModel(borrow_bps_annual=borrow_bps), CAPITAL, "next_open"
+    )
+    long_free = run_vectorized(bars, ConstantWeight(1.0), ZERO_COST, CAPITAL, "next_open")
+
+    drag = short_free.gross_ret[1:] - short.gross_ret[1:]
+    print(f"borrow drag per bar: {np.mean(drag):.10f}  expected {per_bar:.10f}")
+    assert np.allclose(drag, per_bar, rtol=1e-12, atol=0.0), "short leg did not pay borrow"
+    assert np.array_equal(long_paid.equity, long_free.equity), (
+        "a long-only position was charged borrow; the max(-w, 0) term has the wrong sign"
+    )
 
 
 def test_g4_fires_when_a_phantom_cost_is_introduced(bars: Bars) -> None:

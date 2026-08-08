@@ -204,7 +204,7 @@ def story() -> list[Any]:
                     p("<b>Commit</b>", S.cell),
                     p(f"{sha} on {branch} · {commits} commits", S.cell_mono),
                     p("<b>Suite</b>", S.cell),
-                    p("117 collected · 113 pass · 4 skip · ~40 s", S.cell),
+                    p("183 collected · 179 pass · 4 skip · 46.8 s", S.cell),
                 ],
                 [
                     p("<b>Latest</b>", S.cell),
@@ -214,9 +214,9 @@ def story() -> list[Any]:
                 ],
                 [
                     p("<b>Code</b>", S.cell),
-                    p("~1,500 package · ~2,400 test LOC", S.cell),
+                    p("~1,700 package · ~2,900 test LOC", S.cell),
                     p("<b>Quality</b>", S.cell),
-                    p("ruff clean · mypy --strict clean (30 files)", S.cell),
+                    p("ruff clean · mypy --strict clean (31 files)", S.cell),
                 ],
             ],
             [20 * mm, 62 * mm, 20 * mm, 72 * mm],
@@ -224,11 +224,88 @@ def story() -> list[Any]:
         ),
         Spacer(1, 10),
         p(
-            "Five sessions in. <b>Gate 0.0, G1, G2, G3, G4, G5 and G7 are green</b> — the entire "
-            "certified offline core. No market data has entered the system, so invariant B1 still "
-            "holds, and everything to date runs in CI with no network, no API key and no rate "
-            "limit. G6 is next and is the first gate that needs the data layer.",
+            "<b>Gate 0.0, G1, G2, G3, G4, G5 and G7 are green</b> — the entire certified offline "
+            "core. No market data has entered the system, so invariant B1 still holds, and "
+            "everything to date runs in CI with no network, no API key and no rate limit. G6 is "
+            "next and is the first gate that needs the data layer.",
             S.lede,
+        ),
+        p(
+            "This session closed on a report that G2, G3 and G4 were failing. Each was stressed "
+            "far past its own gate rather than re-running the gate that had already passed. G2 and "
+            "G5 were and remain green; G3 carried a real defect, now fixed; G4 was correct but "
+            "under-covered. The stress harness is committed as scripts/health_check.py, and the "
+            "full investigation is in docs/logs/2026-08-08-health-check.md.",
+        ),
+    ]
+
+    # ------------------------------------------------------- health check
+    out += [
+        p("Health check — stressing the gates past their own fixtures", S.h2),
+        p(
+            "A gate can be green because the property holds, or green because the fixture happened "
+            "to be kind. These are the same properties over a wide parameter grid, which is a "
+            "different question and the one worth asking when a result is doubted.",
+        ),
+        table(
+            [
+                ["Check", "Coverage", "Result"],
+                [
+                    p("G2 twin engines", S.cell),
+                    p("1,890 combinations, all six Result fields", S.cell),
+                    p("<b>worst 0.000e+00</b>", S.cell_mono),
+                ],
+                [
+                    p("G4 zero-cost identity", S.cell),
+                    p("288 engine x convention x process x length x seed", S.cell),
+                    p("<b>288/288 bitwise</b>", S.cell_mono),
+                ],
+                [
+                    p("G3 recovery", S.cell),
+                    p("800 paths vs exact lognormal targets", S.cell),
+                    p("worst 0.90 SE", S.cell_mono),
+                ],
+                [
+                    p("G3 paired invariant", S.cell),
+                    p("simple SR - log SR must equal sigma/2 exactly", S.cell),
+                    p("<b>0.00 SE</b>", S.cell_mono),
+                ],
+                [
+                    p("G5 monotonicity", S.cell),
+                    p("3 seeds x 4 strategies, 0-100 bps", S.cell),
+                    p("12/12 monotone", S.cell_mono),
+                ],
+                [
+                    p("Invariants B7-B10", S.cell),
+                    p("frozen types, annualisation, seeds, kurtosis, 0.4", S.cell),
+                    p("0 violations", S.cell_mono),
+                ],
+            ],
+            [40 * mm, 90 * mm, 44 * mm],
+        ),
+        Spacer(1, 4),
+        p(
+            "<b>The one real defect.</b> G3's targets were first-order approximations. A simple "
+            "return is exp(g) − 1 for normal g, so it is lognormal and its exact Sharpe is "
+            "0.399921 rather than μ/σ = 0.400000, and its exact volatility 0.200071 rather than "
+            "σ = 0.200000 — σ is the volatility of the <i>log</i> returns. Errors of 0.02% and "
+            "0.04%, immaterial against sampling noise, but a gate whose whole job is known-truth "
+            "recovery should not carry an approximation. Both are now exact.",
+        ),
+        p(
+            "<b>The one real coverage gap.</b> G4 only ever exercised w = 1, and 1 is a fixed point "
+            "of most weight bugs: a wrong sign, a double-scaling by exposure, or a one-bar "
+            "misalignment at fractional exposure all leave it untouched. An identity holding only "
+            "at w = 1 is not an identity. 33 tests now cover w in {1, ½, ¼, −½, −1} across both "
+            "engines and all conventions, plus a check that the short leg pays borrow and a long "
+            "leg is not charged it.",
+        ),
+        p(
+            "<b>No bias was found.</b> The reported discrepancy was sampling noise: the absolute "
+            "error falls 47× between 200 and 3,000 paths, which is 1/sqrt(M) convergence. The "
+            "paired invariant is the durable protection — because it is measured on the same paths "
+            "the noise cancels, its standard error is 2.6% of the level standard error, and "
+            "swapping the two Sharpe conventions fails it even when both level tests still pass.",
         ),
     ]
 
