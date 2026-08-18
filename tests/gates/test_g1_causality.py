@@ -36,7 +36,9 @@ from falsify.costs import ZERO_COST
 from falsify.features import rolling_mean, shift_one
 from falsify.metrics import annualise_sharpe, sharpe
 from falsify.strategies.base import Strategy
-from falsify.strategies.simple import ZOO, BuyAndHold
+from falsify.strategies.null import RandomSign
+from falsify.strategies.overlays import TurnoverBuffer, VolTarget
+from falsify.strategies.simple import ZOO, BuyAndHold, CausalZScore
 from falsify.synthetic import bars_from_close, gbm
 
 T_BARS = 512
@@ -47,7 +49,30 @@ MASTER_SEED = 20140458
 N_TAUS = 500
 N_SEEDS = 20
 
+# Everything that emits a weight has to be proven causal, including the overlays and
+# the null. The overlays are the interesting case: `TurnoverBuffer` is a stateful
+# left-to-right fold, which is exactly the shape that leaks if the state is seeded
+# from a whole-series statistic instead of accumulated from the start. The null is
+# the trivial case -- its path ignores prices entirely -- but a null that leaked
+# would invalidate G6, so it is checked rather than assumed.
+_BASE = CausalZScore(20)
+OVERLAID: tuple[Strategy, ...] = (
+    TurnoverBuffer(_BASE, 0.25),
+    VolTarget(_BASE, 0.15, 60),
+    TurnoverBuffer(VolTarget(_BASE, 0.15, 60), 0.25),
+    RandomSign(T_BARS, np.random.default_rng(MASTER_SEED + 100), 0.2, 0.75),
+)
+
 HONEST = ZOO
+
+# Reduced grid for the overlays. `TurnoverBuffer` folds over the whole series on every
+# call, so spec strength across the composed overlays is ~36M loop iterations for no
+# additional information: 640 independent cuts already covers every code path, and the
+# base strategies underneath are separately checked at full strength above. Recorded
+# rather than silently reduced, per F7's spirit -- a cap that is not stated reads as
+# coverage that was never there.
+N_TAUS_OVERLAY = 128
+N_SEEDS_OVERLAY = 5
 
 
 def make_pipeline(strategy: Strategy) -> Pipeline:
@@ -180,6 +205,39 @@ def test_g1_honest_strategies_are_causal(strategy: Strategy, prices: Prices) -> 
     rng = np.random.default_rng(MASTER_SEED + 1)
     taus = sample_taus(len(prices), strategy.lookback, rng, n_taus=N_TAUS)
     causality_cut_test(make_pipeline(strategy), prices, taus, rng, n_seeds=N_SEEDS)
+
+
+@pytest.mark.parametrize("strategy", OVERLAID, ids=lambda s: s.name)
+def test_g1_overlays_and_null_are_causal(strategy: Strategy, prices: Prices) -> None:
+    """The overlays and the null, at 128 cuts x 5 seeds.
+
+    `TurnoverBuffer` is the one that matters here. It is a stateful left-to-right fold,
+    which is precisely the shape that leaks if the state is ever seeded from a
+    whole-series statistic rather than accumulated from bar zero -- and the leak would
+    be invisible in review because the fold itself looks obviously causal.
+
+    The null is checked too. Its path ignores prices entirely so it cannot leak, but a
+    leaking null would invalidate every number G6 produces, and that is not a thing to
+    take on faith.
+    """
+    rng = np.random.default_rng(MASTER_SEED + 8)
+    taus = sample_taus(len(prices), strategy.lookback, rng, n_taus=N_TAUS_OVERLAY)
+    causality_cut_test(make_pipeline(strategy), prices, taus, rng, n_seeds=N_SEEDS_OVERLAY)
+
+
+@pytest.mark.parametrize("strategy", OVERLAID, ids=lambda s: s.name)
+def test_g1_overlays_survive_the_strict_cut(strategy: Strategy, prices: Prices) -> None:
+    """The overlays must also pass the execution-alignment cut.
+
+    This is what caught the real bug in `VolTarget`: the first version sized the
+    position on same-bar volatility while the base signal was lagged a bar, so the
+    weight was set from an information set the signal itself was not allowed to use.
+    It passed the Part A1 causality contract and failed here -- which is the entire
+    reason both cut modes exist.
+    """
+    rng = np.random.default_rng(MASTER_SEED + 9)
+    taus = sample_taus(len(prices), max(strategy.lookback, 2), rng, n_taus=48)
+    causality_cut_test(make_pipeline(strategy), prices, taus, rng, n_seeds=4, include_cut=True)
 
 
 def test_g1_rejects_a_pipeline_whose_output_length_moves(prices: Prices) -> None:
