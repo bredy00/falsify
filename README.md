@@ -93,7 +93,7 @@ Numeric output and the figure's bytes are identical across two runs at the same 
 
 ## Gate status
 
-149 tests, ~51 s, entirely offline. `make ci` runs exactly what CI runs.
+225 tests, ~52 s, entirely offline. `make ci` runs exactly what CI runs.
 
 | Gate | Statement | Status |
 |---|---|---|
@@ -103,13 +103,13 @@ Numeric output and the figure's bytes are identical across two runs at the same 
 | **G3** | Analytic recovery on synthetic GBM | **green** — two Sharpe conventions, vol, drift |
 | **G4** | Zero-cost identity | **green** — bitwise, both engines, all conventions |
 | **G5** | Cost monotonicity, break-even cost | **green** — c\* = 27.03 bps per turn |
+| **G6** | Null calibration, 1,000 coin flips | **green** — turnover matched to 0.35%, verified in 15 worlds |
 | **G7** | Leakage trap: deliberately leaky pipelines must be caught | **green** — 5 traps rejected |
-| G6 | Null calibration, 1,000 coin flips | next — needs the data layer |
 | G8 | Purged, embargoed walk-forward | not started |
 | G9 | PBO via CSCV, built on `SelectionRule` | interface ready, gate not started |
 | G10 | Reproducibility from pinned hashes | partial — figure bytes and numeric output stable |
 
-Everything through G5 runs with no network, no API key and no rate limit. That is the whole point of
+Everything through G7 runs with no network, no API key and no rate limit. That is the whole point of
 the ordering in `00`: the certified core is testable in CI without a single flaky test that fails
 because Yahoo timed out.
 
@@ -155,6 +155,54 @@ half of c\*, −0.35 at 1.5×. Net Sharpe is monotone non-increasing across 0–
 buy-and-hold's Sharpe moves by exactly `0.000e+00` across the whole sweep, which confirms cost is
 charged on traded notional rather than on portfolio return. Faster rules die sooner: at 135 turns a
 year the strategy is unprofitable even for free, at 49 turns it survives to 78 bps.
+
+### G6 — the null, and the result that matters
+
+A thousand coin flips through the entire pipeline, matched to the strategy's realised
+**turnover and exposure**, both read off its own engine run. Turnover matching is the whole job:
+a naive coin flip trades 249.7 times a year and earns −1.081 at 20 bps, while the matched null
+trades 72.5 times and earns −0.477. Compare a strategy against the naive null and it clears the
+bar trivially, for entirely the wrong reason.
+
+**The headline, and it is the honest kind:**
+
+| `CausalZScore(20)` | Sharpe | empirical p vs its own null |
+|---|---|---|
+| gross (0 bps) | +1.0566 | **0.0110** |
+| net (20 bps) | +0.4853 | **0.1628** |
+
+The edge is real against noise and **does not survive realistic costs** at the 5% level. Across
+15 independent worlds the pattern holds: mean p = 0.029 gross, **0.172 net**.
+
+The machinery is calibrated too. Under a true null PSR(0) is approximately uniform, and the
+rejection rate at α must be about α — measured 0.085 / 0.040 against nominal 0.10 / 0.05. DSR
+rejects all 1,000; the luckiest coin flip of a thousand reaches 0.18.
+
+**Bounds set by a 15-world replication study** (`scripts/g6_replication.py`), not by one run —
+and the study earned its keep. It showed the gate as first written **would have failed**: the
+`< 3 SE` bounds hit 4.08 SE and 3.27 SE in some worlds. The cause was a statistical error in the
+bound rather than in the null — the 1,000 nulls all trade one price path, so they are not
+independent draws and the naive/binomial SE understates the true uncertainty. The bounds are now
+scale-free or evidence-based, and the study verifies them: **15/15 worlds pass**. The 1% level is
+reported but not asserted, because 1,000 draws cannot resolve a 1% tail — 10 expected exceedances
+carries Poisson noise of ±3, and the worlds duly spread 0.003 to 0.020.
+
+### The propagation layer
+
+G5 showed turnover was doing more damage than the signal was doing good, with no dial to turn.
+Two composable overlays now provide one. On `CausalZScore(20)`:
+
+| | turnover/yr | gross SR | net SR @ 20 bps |
+|---|---|---|---|
+| base | 74.32 | +0.9464 | +0.3864 |
+| `VolTarget` + `TurnoverBuffer` | **24.74** | +1.1176 | **+0.7076** |
+
+Turnover −67%, net Sharpe **+83%**, while the gross Sharpe barely moves — which is what shows the
+gain came from paying less transaction tax rather than from a different signal. G1's strict cut
+caught a real bug on the way: `VolTarget` first sized on same-bar volatility while the base signal
+was lagged a bar, setting the position from an information set the signal itself was not allowed
+to use. It passed the Part A1 causality contract and failed execution alignment — precisely the
+distinction the two cut modes exist to separate.
 
 ### The A4 ruling
 
