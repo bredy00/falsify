@@ -32,7 +32,7 @@ test:
 	$(RUN) pytest
 
 gates:
-	$(RUN) pytest tests -v -n auto --min-collected=240
+	$(RUN) pytest tests -v -n auto --min-collected=275
 
 prop:
 	$(RUN) pytest tests/gates/test_prop.py -v -s
