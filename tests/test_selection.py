@@ -131,17 +131,33 @@ def return_matrices(
     return np.asarray((noise + carrier) * vols, dtype=np.float64)
 
 
+
+def matrix_for(rule: SelectionRule, data: st.DataObject, **kwargs: int) -> Matrix:
+    """Draw a return block guaranteed wide enough for `rule`.
+
+    `TopK(k)` is undefined for a grid narrower than k, and these property tests used
+    to skip whenever hypothesis happened to draw one. Four skipped tests is four
+    reporting neither pass nor fail -- and a skip conditioned on a random draw is
+    worse than that, because how much of the property actually got checked then
+    varies from run to run. Drawing N >= k instead makes the input valid by
+    construction, so every example exercises the rule. The k > N error path keeps its
+    own dedicated test.
+    """
+    floor = rule.k if isinstance(rule, TopK) else 1
+    min_n = max(floor, kwargs.pop("min_n", 1))
+    return data.draw(return_matrices(min_n=min_n, **kwargs))
+
+
 # ------------------------------------------------------------------- contract
 
 
 @pytest.mark.parametrize("rule", ALL_RULES, ids=lambda r: r.name)
 @PROPERTY_SETTINGS
-@given(matrix=return_matrices())
-def test_contract_holds_for_every_rule(rule: SelectionRule, matrix: Matrix) -> None:
+@given(data=st.data())
+def test_contract_holds_for_every_rule(rule: SelectionRule, data: st.DataObject) -> None:
     """Non-negative, sums to 1 within SUM_TOL, one weight per configuration."""
+    matrix = matrix_for(rule, data)
     n = matrix.shape[1]
-    if isinstance(rule, TopK) and rule.k > n:
-        pytest.skip("k exceeds N; covered by test_topk_rejects_k_above_n")
 
     w = rule.weights(matrix)
 
@@ -153,17 +169,15 @@ def test_contract_holds_for_every_rule(rule: SelectionRule, matrix: Matrix) -> N
 
 @pytest.mark.parametrize("rule", ALL_RULES, ids=lambda r: r.name)
 @PROPERTY_SETTINGS
-@given(matrix=return_matrices())
-def test_rules_are_deterministic_and_stateless(rule: SelectionRule, matrix: Matrix) -> None:
+@given(data=st.data())
+def test_rules_are_deterministic_and_stateless(rule: SelectionRule, data: st.DataObject) -> None:
     """Same input, same output, bitwise -- and no state carried between calls.
 
     The second half matters as much as the first: a rule that accumulated
     anything across calls would make G9's 12,870 splits order-dependent, and
     nothing would raise (B9).
     """
-    if isinstance(rule, TopK) and rule.k > matrix.shape[1]:
-        pytest.skip("k exceeds N")
-
+    matrix = matrix_for(rule, data)
     first = rule.weights(matrix)
     # Interleave a different call; a stateful rule would drift here. Scaling and
     # row-reversal keep the input non-degenerate -- `np.abs` would not, since the
@@ -177,17 +191,16 @@ def test_rules_are_deterministic_and_stateless(rule: SelectionRule, matrix: Matr
 
 @pytest.mark.parametrize("rule", ALL_RULES, ids=lambda r: r.name)
 @PROPERTY_SETTINGS
-@given(matrix=separated_return_matrices(), scale=st.floats(0.05, 20.0))
-def test_rules_are_scale_invariant(rule: SelectionRule, matrix: Matrix, scale: float) -> None:
+@given(data=st.data(), scale=st.floats(0.05, 20.0))
+def test_rules_are_scale_invariant(rule: SelectionRule, data: st.DataObject, scale: float) -> None:
     """Scaling every return leaves the weights alone.
 
     Sharpe is scale-invariant, so any rule built on it must be too. A rule that
     failed this would silently depend on whether returns were expressed as
     fractions or percent.
     """
-    if isinstance(rule, TopK) and rule.k > matrix.shape[1]:
-        pytest.skip("k exceeds N")
-
+    floor = rule.k if isinstance(rule, TopK) else 2
+    matrix = data.draw(separated_return_matrices(min_n=max(floor, 2)))
     base = rule.weights(matrix)
     scaled = rule.weights(matrix * scale)
     assert np.allclose(base, scaled, atol=1e-9), f"{rule.name} is not scale-invariant"
@@ -195,9 +208,9 @@ def test_rules_are_scale_invariant(rule: SelectionRule, matrix: Matrix, scale: f
 
 @pytest.mark.parametrize("rule", ALL_RULES, ids=lambda r: r.name)
 @PROPERTY_SETTINGS
-@given(matrix=separated_return_matrices(), seed=st.integers(0, 2**32 - 1))
+@given(data=st.data(), seed=st.integers(0, 2**32 - 1))
 def test_rules_are_permutation_equivariant(
-    rule: SelectionRule, matrix: Matrix, seed: int
+    rule: SelectionRule, data: st.DataObject, seed: int
 ) -> None:
     """Relabelling the configurations relabels the weights, nothing more.
 
@@ -205,9 +218,8 @@ def test_rules_are_permutation_equivariant(
     of column order -- and column order is exactly what changes when CSCV
     reshuffles blocks.
     """
-    if isinstance(rule, TopK) and rule.k > matrix.shape[1]:
-        pytest.skip("k exceeds N")
-
+    floor = rule.k if isinstance(rule, TopK) else 2
+    matrix = data.draw(separated_return_matrices(min_n=max(floor, 2)))
     # Separation comes from the generator. Ties would make this ambiguous for the
     # discrete rules: permuting columns changes float summation order, so Sharpes
     # closer together than the rounding floor can swap places legitimately.

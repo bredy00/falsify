@@ -17,6 +17,7 @@ dev = [
     "hypothesis>=6.100",
     "ruff>=0.6",
     "mypy>=1.11",
+    "pytest-xdist>=3.6",
 ]
 # Report generation. Separate from dev because nothing in the gate suite depends
 # on it -- but CI installs it so mypy can typecheck scripts/status_report.py.
