@@ -93,7 +93,7 @@ Numeric output and the figure's bytes are identical across two runs at the same 
 
 ## Gate status
 
-225 tests, ~52 s, entirely offline. `make ci` runs exactly what CI runs.
+**263 tests, 0 skipped, ~28 s** (parallel), entirely offline. CI is green in 47 s. `make ci` runs exactly what CI runs.
 
 | Gate | Statement | Status |
 |---|---|---|
@@ -105,11 +105,11 @@ Numeric output and the figure's bytes are identical across two runs at the same 
 | **G5** | Cost monotonicity, break-even cost | **green** — c\* = 27.03 bps per turn |
 | **G6** | Null calibration, 1,000 coin flips | **green** — turnover matched to 0.35%, verified in 15 worlds |
 | **G7** | Leakage trap: deliberately leaky pipelines must be caught | **green** — 5 traps rejected |
-| G8 | Purged, embargoed walk-forward | not started |
+| **G8** | Purged, embargoed walk-forward | **green** — 3 splitters, purge + embargo asserted |
 | G9 | PBO via CSCV, built on `SelectionRule` | interface ready, gate not started |
 | G10 | Reproducibility from pinned hashes | partial — figure bytes and numeric output stable |
 
-Everything through G7 runs with no network, no API key and no rate limit. That is the whole point of
+Everything through G8 runs with no network, no API key and no rate limit. That is the whole point of
 the ordering in `00`: the certified core is testable in CI without a single flaky test that fails
 because Yahoo timed out.
 
@@ -203,6 +203,76 @@ caught a real bug on the way: `VolTarget` first sized on same-bar volatility whi
 was lagged a bar, setting the position from an information set the signal itself was not allowed
 to use. It passed the Part A1 causality contract and failed execution alignment — precisely the
 distinction the two cut modes exist to separate.
+
+### G8 — walk-forward, and the integration layer
+
+The gate's condition is blunt: **zero index overlap, asserted in code, not in docs.**
+`Split` refuses to construct when train and test intersect, so a leaking partition is
+*unconstructable* rather than caught later inside a Sharpe.
+
+Three geometries, because "walk-forward" is not one thing. `ExpandingWindow` anchors at
+bar 0 and grows — how a strategy is actually run. `RollingWindow` holds the training
+length fixed, making folds comparable and deliberately forgetting the distant past.
+`PurgedKFold` trains on both sides of the block: explicitly **not** a walk-forward, kept
+because it is the geometry CSCV needs at G9 and the only one where the embargo does any
+work. Purge and embargo are tested separately, because transposing them yields folds
+that are non-overlapping, plausible and wrong.
+
+The integration layer is the other half: `build_grid` pushes a configuration grid
+through the certified engine, `walk_forward_select` splits it, selects on each training
+block with a `SelectionRule`, and scores only out of sample. Built here rather than at
+G9 on purpose — CSCV needs exactly a `(T, N)` grid, a block splitter and a rule, so G9
+assembles certified parts instead of inventing them beside its own rank bookkeeping.
+
+**Three assertions were written, measured, and then rewritten.** That is the substance:
+
+*Draft one* asserted ArgMax degrades out of sample. It failed with OOS **above** IS
+(+1.98 vs +1.19) — failure mode F6, which reads as a leak. It was not one: every fold
+showed a purge gap of exactly 10 with train strictly before test. Over 20 seeds,
+degradation is **−0.041 ± 0.125**, negative in 10 of 20. An 80-bar Sharpe carries an SE
+near 1.77, so a six-fold mean carries 0.72 — the assertion was on noise. Replaced by the
+exact structural claim (ArgMax's IS Sharpe *equals* the grid maximum, 20/20), with
+degradation reported rather than gated.
+
+*Draft two* expected the compensation effect — a negative IS→OOS slope. It measured
+**+0.979 ± 0.085, positive in 20/20**, and that is correct rather than broken:
+
+| Process | IS→OOS slope over 20 seeds | reading |
+|---|---|---|
+| AR(1), configs genuinely differ | **+0.979 ± 0.085**, >0 in 20/20 | ranking carries real information |
+| GBM, no config has an edge | +0.215 ± 0.265, <0 in 8/20 | indistinguishable from zero |
+
+A negative slope is the signature of selecting among configurations with **no true
+differential merit**. On a stationary mean-reverting series where slow z-scores earn a
+real edge and trend-followers genuinely lose, in-sample ranking *should* predict
+out-of-sample. The compensation effect belongs to the memoryless case. So the slope is
+reported, not gated — one GBM path puts it anywhere from −1.78 to +2.26 — and what is
+asserted is what survives: a real edge survives the walk-forward, and none is
+manufactured on GBM.
+
+*Draft three* asserted all three splitters raise on 20 observations. `PurgedKFold` does
+not, and should not — 20 observations is a perfectly legal 5-fold split.
+
+### Suite performance
+
+| | before | after |
+|---|---|---|
+| tests | 225 | **263** |
+| skipped | 4 | **0** |
+| local runtime | 49.8 s | **28 s** |
+| CI total | 55 s | **47 s** (gate step 27 s) |
+
+`pytest-xdist` at `-n auto` does the work, with **every test still at full strength** —
+G1 keeps its spec-mandated 500 cuts × 20 seeds. The 4 skips were `TopK(3)` receiving a
+grid narrower than 3 columns; N is now drawn `>= k` so every example exercises the rule.
+A skip conditioned on a random draw is worse than a skip, because how much of the
+property got checked varied run to run.
+
+One thing parallelising broke and had to be fixed: **the collection floor stopped
+working under xdist**, raising `UsageError` inside a worker where pytest surfaces it as
+an `INTERNALERROR`. A countermeasure that evaporates the moment you change how tests run
+is worse than none, so it now enforces controller-side and is verified firing in both
+serial and parallel.
 
 ### The A4 ruling
 

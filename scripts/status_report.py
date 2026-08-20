@@ -26,7 +26,6 @@ from reportlab.lib.units import mm
 from reportlab.platypus import (
     BaseDocTemplate,
     Frame,
-    KeepTogether,
     PageBreak,
     PageTemplate,
     Paragraph,
@@ -36,7 +35,7 @@ from reportlab.platypus import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-REPORT_DATE = date(2026, 8, 8)
+REPORT_DATE = date(2026, 8, 12)
 OUT_PATH = REPO_ROOT / "docs" / f"status-{REPORT_DATE.isoformat()}.pdf"
 
 # From compensation_effect.png, so report and figures share one identity.
@@ -171,7 +170,7 @@ def on_page(canvas: Any, doc: Any) -> None:
     canvas.setFillColor(GREY)
     canvas.drawString(18 * mm, h - 11.6 * mm, "FALSIFY  ·  STATUS REPORT")
     canvas.drawRightString(
-        w - 18 * mm, h - 11.6 * mm, f"{REPORT_DATE.isoformat()}  ·  sessions 1-4"
+        w - 18 * mm, h - 11.6 * mm, f"{REPORT_DATE.isoformat()}  ·  through G8"
     )
     canvas.line(18 * mm, 14 * mm, w - 18 * mm, 14 * mm)
     canvas.drawString(18 * mm, 10 * mm, "github.com/bredy00/falsify  (private)")
@@ -204,19 +203,19 @@ def story() -> list[Any]:
                     p("<b>Commit</b>", S.cell),
                     p(f"{sha} on {branch} · {commits} commits", S.cell_mono),
                     p("<b>Suite</b>", S.cell),
-                    p("183 collected · 179 pass · 4 skip · 46.8 s", S.cell),
+                    p("263 collected · 263 pass · 0 skip · 28 s", S.cell),
                 ],
                 [
                     p("<b>Latest</b>", S.cell),
                     p(subject, S.cell_mono),
                     p("<b>CI</b>", S.cell),
-                    p("green · 5 checks · offline, no secrets", S.cell),
+                    p("green in 47 s · 6 checks · offline", S.cell),
                 ],
                 [
                     p("<b>Code</b>", S.cell),
-                    p("~1,700 package · ~2,900 test LOC", S.cell),
+                    p("~2,400 package · ~4,000 test LOC", S.cell),
                     p("<b>Quality</b>", S.cell),
-                    p("ruff clean · mypy --strict clean (31 files)", S.cell),
+                    p("ruff clean · mypy --strict clean (40 files)", S.cell),
                 ],
             ],
             [20 * mm, 62 * mm, 20 * mm, 72 * mm],
@@ -705,33 +704,121 @@ def story() -> list[Any]:
 
     # ---------------------------------------------------------- next session
     out += [
-        p("Next session — G6, and the first network call", S.h2),
+        p("G8 -- walk-forward, and three assertions that had to be rewritten", S.h2),
         p(
-            "The certified offline core is complete, which means the ordering rule in 00 has been "
-            "satisfied: the engine has recovered known parameters from synthetic data with known "
-            "truth, so real market data is now allowed to enter the system. Everything to this point "
-            "was built without a single network call.",
+            "The gate's condition is blunt -- zero index overlap, asserted in code rather than "
+            "in prose -- so `Split` refuses to construct when train and test intersect. A "
+            "leaking partition is unconstructable rather than caught later inside a Sharpe. "
+            "Three geometries ship: an anchored expanding window, a fixed-length rolling "
+            "window, and a purged k-fold which is explicitly NOT a walk-forward but is the "
+            "geometry CSCV needs at G9.",
         ),
         p(
-            "G6 is null calibration — a thousand coin-flip strategies through the whole pipeline, "
-            "their Sharpe distribution forming the empirical null that the real result must beat. "
-            "The compute is trivial; 03 Part C is explicit that the one genuinely hard part is "
-            "<b>turnover matching</b>. A random strategy that flips every bar has enormous turnover "
-            "and gets destroyed by costs, which would make the real strategy look good for entirely "
-            "the wrong reason. The null has to trade at the same rate as the thing it is testing — a "
-            "Markov chain whose transition probability is tuned until realised turnover matches "
-            "within 5%, asserted in the test.",
+            "The substance of the session was three assertions that were written, measured, "
+            "and then replaced -- each for the same underlying reason.",
         ),
-        Spacer(1, 8),
-        KeepTogether([
-            p("What G5 already tells us about G6", S.h3),
-            p(
-                "Break-even cost is 27.03 bps per turn at 68.8 turns a year, and a rule trading 135 "
-                "times a year is unprofitable even for free. So turnover matching is not a "
-                "formality here — it is the difference between a calibrated null and a flattering "
-                "one, and the numbers to match against already exist.",
-            ),
-        ]),
+        table(
+            [
+                ["Draft assertion", "What measurement showed", "Resolution"],
+                [
+                    p("ArgMax degrades out of sample", S.cell),
+                    p(
+                        "Failed with OOS ABOVE IS (+1.98 vs +1.19) -- failure mode F6, which "
+                        "reads as a leak. It is not: every fold showed a purge gap of exactly "
+                        "10 with train strictly before test. Over 20 seeds degradation is "
+                        "-0.041 +/- 0.125, negative in 10 of 20. An 80-bar Sharpe carries an "
+                        "SE near 1.77.",
+                        S.cell,
+                    ),
+                    p(
+                        "Replaced by the exact structural claim: ArgMax's in-sample Sharpe "
+                        "equals the grid maximum, 20/20. Degradation reported, not gated.",
+                        S.cell,
+                    ),
+                ],
+                [
+                    p("IS->OOS slope is negative (compensation effect)", S.cell),
+                    p(
+                        "Measured +0.979 +/- 0.085, positive in 20 of 20 on AR(1). Correct, "
+                        "not broken: a negative slope is the signature of selecting among "
+                        "configurations with no true differential merit. Here the slow "
+                        "z-scores earn a real edge and the trend-followers genuinely lose, so "
+                        "ranking carries information. On GBM the slope is +0.215 +/- 0.265, "
+                        "indistinguishable from zero.",
+                        S.cell,
+                    ),
+                    p(
+                        "Slope reported for both processes; asserted claim is that a real "
+                        "edge survives the walk-forward and none is manufactured on GBM.",
+                        S.cell,
+                    ),
+                ],
+                [
+                    p("All splitters raise on 20 observations", S.cell),
+                    p(
+                        "PurgedKFold does not, and should not -- 20 observations is a "
+                        "perfectly legal 5-fold split.",
+                        S.cell,
+                    ),
+                    p("Parametrised per splitter.", S.cell),
+                ],
+            ],
+            [42 * mm, 82 * mm, 50 * mm],
+        ),
+        Spacer(1, 4),
+        p(
+            "The pattern is the same one that produced the G6 replication study: an assertion "
+            "written from expectation rather than from measurement, on a quantity whose "
+            "sampling error was never worked out. Measuring first is cheap; a gate that fails "
+            "half the time for reasons unrelated to the code is not.",
+        ),
+
+        p("Suite performance", S.h2),
+        table(
+            [
+                ["", "before", "after"],
+                [p("tests", S.cell), p("225", S.cell_mono), p("<b>263</b>", S.cell_mono)],
+                [p("skipped", S.cell), p("4", S.cell_mono), p("<b>0</b>", S.cell_mono)],
+                [p("local runtime", S.cell), p("49.8 s", S.cell_mono), p("<b>28 s</b>", S.cell_mono)],
+                [
+                    p("CI total", S.cell),
+                    p("55 s", S.cell_mono),
+                    p("<b>47 s</b> (gate step 27 s)", S.cell_mono),
+                ],
+            ],
+            [50 * mm, 40 * mm, 84 * mm],
+        ),
+        Spacer(1, 4),
+        p(
+            "pytest-xdist at -n auto, with <b>every test still at full strength</b> -- G1 keeps "
+            "its spec-mandated 500 cuts x 20 seeds. The four skips were TopK(3) receiving a grid "
+            "narrower than three columns; N is now drawn >= k, so every example exercises the "
+            "rule. A skip conditioned on a random draw is worse than a skip, because how much of "
+            "the property actually got checked varied from run to run.",
+        ),
+        p(
+            "<b>Parallelising broke the collection floor</b>, which is worth recording. It raised "
+            "UsageError inside an xdist worker, where pytest surfaces it as an INTERNALERROR "
+            "rather than the clean message it exists to print -- a countermeasure evaporating "
+            "exactly when the way tests run changed. It now enforces controller-side and is "
+            "verified firing in both serial and parallel.",
+        ),
+
+        p("Next -- G9, and the data layer", S.h2),
+        p(
+            "G9 is PBO via CSCV, and it is the hardest code in the project: 12,870 splits, "
+            "per-split argmax across N columns, rank computation, logit transform. Every one of "
+            "those is a place to be off by one and none will raise. It is also now the best "
+            "prepared: SelectionRule was built at session 3, and G8 has just supplied the "
+            "(T, N) grid, the block splitter and the walk-forward harness it needs, so CSCV "
+            "assembles certified parts rather than inventing them beside its own bookkeeping.",
+        ),
+        p(
+            "Phase 5 -- loaders, parquet cache, sha256 manifest, pinned auto_adjust -- is "
+            "authorised and queued. It carries the first network call and the live A4 "
+            "verification on real SPY prices. B1 is already released; what remains is the "
+            "data layer itself, and CI stays offline regardless.",
+        ),
     ]
 
     out += [
