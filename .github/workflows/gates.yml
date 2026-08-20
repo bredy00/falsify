@@ -44,6 +44,18 @@ jobs:
       - name: Verify action refs resolve
         run: uv run python scripts/check_action_refs.py
 
+      # mypy is 8s of a 54s job and almost all of it is re-analysing
+      # unchanged third-party stubs. The cache key tracks the lockfile and the
+      # sources, so a real change still gets a cold, honest run.
+      - name: Cache mypy
+        uses: actions/cache@v6.1.0
+        with:
+          path: .mypy_cache
+          key: mypy-${{ runner.os }}-${{ hashFiles('uv.lock', 'pyproject.toml') }}-${{ hashFiles('falsify/**/*.py', 'tests/**/*.py', 'scripts/**/*.py') }}
+          restore-keys: |
+            mypy-${{ runner.os }}-${{ hashFiles('uv.lock', 'pyproject.toml') }}-
+            mypy-${{ runner.os }}-
+
       - name: Lint
         run: uv run ruff check .
 
