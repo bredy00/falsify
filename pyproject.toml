@@ -64,6 +64,10 @@ select = [
 # superscripts and long sentences all belong in the copy. Scoped to this one file
 # rather than to scripts/ so it cannot mask a confusable in the ref checker.
 "scripts/status_report.py" = ["E501", "RUF001"]
+# The comparison figure is labelled in the notation of the subject -- rho, beta,
+# phi, degree signs. Same reasoning, same tight scope.
+"scripts/regression_comparison.py" = ["E501", "RUF001"]
+"scripts/regression_report.py" = ["E501", "RUF001"]
 
 # ----------------------------------------------------------------------- mypy
 
