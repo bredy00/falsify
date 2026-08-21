@@ -65,7 +65,7 @@ jobs:
       # --min-collected is the countermeasure for the inverse failure: a suite
       # that runs nothing and reports success.
       - name: Gate suite
-        run: uv run pytest tests -v -n auto --dist loadgroup -m "not live" --min-collected=320
+        run: uv run pytest tests -v -n auto -m "not live" --min-collected=320
 
       # The figure is a deliverable (Session 1) and G10 will assert it is
       # byte-reproducible. Keeping it as an artefact makes a CI regression

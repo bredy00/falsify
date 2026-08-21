@@ -65,12 +65,6 @@ PER_GRID_SD = 0.22  # measured over 80 grids at each of S = 8, 10, 12, 16
 # at 4 SE and why nothing here is asserted on a single grid.
 SEED0 = 5_000
 
-# Every test that calls `sweep` carries this marker, and CI runs `--dist loadgroup`, so
-# they all land on one xdist worker and share one set of sweeps. Without it each worker
-# recomputes the same 120 CSCV runs: the memoisation below is per process, and plain
-# `--dist load` scatters these tests across workers where it cannot help.
-XDIST_GROUP = pytest.mark.xdist_group(name="g9_sweeps")
-
 Builder = Callable[..., NDArray[np.float64]]
 
 # Singletons, because `functools.cache` keys on object identity for these: a fresh
@@ -88,6 +82,11 @@ def sweep(
     Six tests share three sweeps; recomputing them cost 11s of a 26s gate. Caching is
     safe because the inputs are seeds rather than state and `cscv` is deterministic
     by B9 -- the results are identical either way.
+
+    Per process, so under `-n auto` each xdist worker keeps its own. Pinning these
+    tests to one worker with `--dist loadgroup` was tried and measured at -0.12s
+    +/- 0.35 (paired, n=6, faster in 1 of 6): no effect, because duplicated work on
+    parallel workers costs CPU rather than wall clock. The flag was reverted.
 
     Whole `CSCVResult`s rather than bare PBOs, so the F3 test can look at the ranks of
     the same sweep the calibration test took its mean from instead of running its own.
@@ -141,7 +140,6 @@ def test_g9_ranks_stay_strictly_inside_the_open_unit_interval() -> None:
     assert 0.0 <= result.pbo() <= 1.0
 
 
-@XDIST_GROUP
 def test_g9_a_saturated_pbo_is_investigated_rather_than_trusted() -> None:
     """F3: PBO of exactly 0.0 or 1.0 is the signature of broken rank bookkeeping.
 
@@ -178,7 +176,6 @@ def test_g9_a_saturated_pbo_is_investigated_rather_than_trusted() -> None:
 # --------------------------------------------------------------------------------------
 
 
-@XDIST_GROUP
 def test_g9_pbo_is_one_half_when_no_configuration_is_better_than_another() -> None:
     """The null, and the justification for the 0.5 ship/no-ship line.
 
@@ -200,7 +197,6 @@ def test_g9_pbo_is_one_half_when_no_configuration_is_better_than_another() -> No
     )
 
 
-@XDIST_GROUP
 def test_g9_pbo_is_low_when_the_differences_between_configurations_are_real() -> None:
     """Power. A gate that fires on everything is as useless as one that never fires.
 
@@ -221,7 +217,6 @@ def test_g9_pbo_is_low_when_the_differences_between_configurations_are_real() ->
 # --------------------------------------------------------------------------------------
 
 
-@XDIST_GROUP
 def test_g9_fires_on_a_grid_where_selection_is_a_trap() -> None:
     """F7: a gate that has never failed is not a gate.
 
@@ -244,7 +239,6 @@ def test_g9_fires_on_a_grid_where_selection_is_a_trap() -> None:
     assert (mean - 0.5) / se > 3.0, f"only {(mean - 0.5) / se:.1f} SE above the threshold"
 
 
-@XDIST_GROUP
 def test_g9_separates_the_trap_from_the_genuine_grid() -> None:
     """The whole claim in one comparison: same rule, same block count, same number of
     configurations, opposite verdicts. Measured 0.093 (merit) < 0.507 (null) < 0.834 (trap)."""
@@ -336,7 +330,6 @@ def test_g9_pbo_is_not_monotone_in_temperature() -> None:
     assert curve[-1] < curve[0], "the high-temperature decline should still be there"
 
 
-@XDIST_GROUP
 def test_g9_equal_weight_pbo_is_a_property_of_the_grid_not_of_overfitting() -> None:
     """Why the tau -> infinity endpoint carries no information, reported not asserted.
 
