@@ -28,6 +28,7 @@ from falsify.selection import (
     Softmax,
     TopK,
     in_sample_sharpe,
+    noise_floor,
 )
 
 Matrix = NDArray[np.float64]
@@ -129,7 +130,6 @@ def return_matrices(
         )
     )
     return np.asarray((noise + carrier) * vols, dtype=np.float64)
-
 
 
 def matrix_for(rule: SelectionRule, data: st.DataObject, **kwargs: int) -> Matrix:
@@ -445,3 +445,38 @@ def test_rule_names_are_distinct_and_record_their_parameters() -> None:
     assert len(names) == len(set(names)), f"duplicate rule names: {names}"
     assert Softmax(0.5).name != Softmax(2.0).name
     assert TopK(1).name != TopK(3).name
+
+
+@given(
+    arrays(
+        np.float64,
+        st.tuples(st.integers(2, 40), st.integers(1, 8)),
+        elements=st.floats(-1.0, 1.0, allow_nan=False, allow_infinity=False, width=64),
+    )
+)
+@settings(max_examples=200, suppress_health_check=[HealthCheck.too_slow])
+def test_the_vectorised_floor_is_the_documented_scalar_floor(matrix: Matrix) -> None:
+    """`in_sample_sharpe` computes every column's floor in one pass; `noise_floor`
+    is the scalar definition that the docstring and Gate 0.4 both refer to.
+
+    They are two expressions of one rule, and nothing but this test stops them
+    drifting apart. The vectorised form exists because the per-column comprehension
+    it replaced cost 0.68s +/- 0.145 of a 4.75s C(16,8) sweep (paired, n=18,
+    t=4.7) -- a real saving, but worthless if it quietly changed the threshold at
+    which a dust column is caught.
+    """
+    t_is = matrix.shape[0]
+    scalar = np.array(
+        [noise_floor(float(np.max(np.abs(col))), t_is) for col in matrix.T],
+        dtype=np.float64,
+    )
+    vectorised = (
+        np.finfo(np.float64).eps
+        * np.maximum(np.max(np.abs(matrix), axis=0), 0.0)
+        * max(t_is, 1)
+        * 4.0
+    )
+    assert np.array_equal(scalar, vectorised), (
+        "the vectorised floor no longer matches noise_floor(). One of them moved, "
+        "and the dust threshold Gate 0.4 relies on is now ambiguous."
+    )

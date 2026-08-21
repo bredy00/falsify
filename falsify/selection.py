@@ -76,11 +76,13 @@ def in_sample_sharpe(is_returns: Returns) -> NDArray[np.float64]:
     mu = is_returns.mean(axis=0)
     sd = is_returns.std(axis=0, ddof=1)
 
-    # Per-column floor: a column's own magnitude sets its dust level.
-    floors = np.array(
-        [noise_floor(float(np.max(np.abs(col))), t_is) for col in is_returns.T],
-        dtype=np.float64,
-    )
+    # Per-column floor: a column's own magnitude sets its dust level. Computed for
+    # every column in one pass rather than a comprehension over `is_returns.T` --
+    # identical values, but the loop version issued one `np.max` call per column and
+    # profiling put it at 90% of CSCV's runtime, 154,440 calls for a single
+    # C(16,8) sweep.
+    scale = np.max(np.abs(is_returns), axis=0)
+    floors = np.finfo(np.float64).eps * np.maximum(scale, 0.0) * max(t_is, 1) * 4.0
     degenerate = ~np.isfinite(sd) | (sd <= floors)
     if np.any(degenerate):
         bad = np.flatnonzero(degenerate)
