@@ -17,8 +17,8 @@ import pytest
 # Guards against catastrophic silent loss, not against ordinary churn: set below
 # the current count so adding or removing a few tests needs no edit, but losing a
 # whole file fails loudly. Raise it as the suite grows.
-# 323 selected at Phase 5 (live tests are deselected in CI, not skipped).
-DEFAULT_MIN_COLLECTED = 300
+# 340 selected at G9 phase 2 (live tests are deselected in CI, not skipped).
+DEFAULT_MIN_COLLECTED = 320
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:

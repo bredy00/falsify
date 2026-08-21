@@ -113,7 +113,7 @@ draws rather than measurements. Regenerate with
 | **G6** | Null calibration, 1,000 coin flips | **green** — turnover matched to 0.35%, verified in 15 worlds |
 | **G7** | Leakage trap: deliberately leaky pipelines must be caught | **green** — 5 traps rejected |
 | **G8** | Purged, embargoed walk-forward | **green** — 3 splitters, purge + embargo asserted |
-| G9 | PBO via CSCV, built on `SelectionRule` | interface ready, gate not started |
+| G9 | PBO via CSCV over 12,870 splits, on `SelectionRule` | green; null calibrates to 0.5, fires on a compensation trap at 0.79 |
 | G10 | Reproducibility from pinned hashes | partial — figure bytes and numeric output stable |
 
 Everything through G8 runs with no network, no API key and no rate limit. That is the whole point of

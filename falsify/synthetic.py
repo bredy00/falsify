@@ -144,3 +144,70 @@ def bars_from_close(close: Prices, start: str = "2020-01-01") -> Bars:
         volume=np.full(n, 1_000_000.0),
         adjustment="total_return",
     )
+
+
+def noise_grid(
+    rng: np.random.Generator, n_obs: int = 1200, n_configs: int = 12, vol: float = 0.01
+) -> NDArray[np.float64]:
+    """A configuration grid with no differential merit whatsoever.
+
+    Every column has the same true mean and volatility, so any apparent winner is
+    sampling noise. G9's null: `PBO(ArgMax)` here must sit at 0.5, because the
+    in-sample winner is a coin flip to land in either half out of sample.
+    """
+    return np.asarray(rng.normal(0.0, vol, (n_obs, n_configs)), dtype=np.float64)
+
+
+def merit_grid(
+    rng: np.random.Generator,
+    n_obs: int = 1200,
+    n_configs: int = 12,
+    vol: float = 0.01,
+    spread: float = 8e-4,
+) -> NDArray[np.float64]:
+    """Real, persistent differences between configurations.
+
+    Column means run linearly from `-spread` to `+spread` and stay there. The best
+    column is genuinely best in every block, so selection is doing its job and PBO
+    should be low. The counterpart to `compensation_grid`, and the reason a low PBO
+    is evidence of something rather than an artefact of the construction.
+    """
+    drift = np.linspace(-spread, spread, n_configs)
+    return np.asarray(rng.normal(0.0, vol, (n_obs, n_configs)) + drift, dtype=np.float64)
+
+
+def compensation_grid(
+    rng: np.random.Generator,
+    n_obs: int = 1200,
+    n_configs: int = 12,
+    n_blocks: int = 12,
+    vol: float = 0.01,
+    amp: float = 1.2e-3,
+) -> NDArray[np.float64]:
+    """The overfitting trap: a grid where the in-sample winner is mechanically the
+    out-of-sample loser.
+
+    Each configuration gets a per-block mean, and those means are centred to sum to
+    zero across blocks -- so whatever a configuration earns in one block it borrowed
+    from another. Over two complementary halves the in-sample mean is then the
+    negative of the out-of-sample mean, which is Propositions 3 and 5 made concrete
+    rather than assumed.
+
+    This exists because of F7: a gate that has never failed is not a gate. G9 has to
+    be shown firing on a grid built to defeat it, not merely passing on grids that
+    were never going to trouble it. The block count must match the `n_blocks` CSCV
+    is run with, or the compensation is smeared across block boundaries and the trap
+    is only partly armed.
+    """
+    if n_blocks < 2 or n_blocks % 2 != 0:
+        raise ValueError(f"n_blocks must be even and at least 2, got {n_blocks}")
+    if n_obs < n_blocks * 2:
+        raise ValueError(f"{n_obs} observations cannot carry {n_blocks} blocks")
+
+    out = rng.normal(0.0, vol, (n_obs, n_configs))
+    means = rng.normal(0.0, amp, (n_blocks, n_configs))
+    means -= means.mean(axis=0)  # zero-sum: every gain is borrowed
+    bounds = np.linspace(0, n_obs, n_blocks + 1).astype(int)
+    for k in range(n_blocks):
+        out[bounds[k] : bounds[k + 1]] += means[k]
+    return np.asarray(out, dtype=np.float64)
