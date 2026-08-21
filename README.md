@@ -93,7 +93,14 @@ Numeric output and the figure's bytes are identical across two runs at the same 
 
 ## Gate status
 
-**263 tests, 0 skipped, ~28 s** (parallel), entirely offline. CI is green in 47 s. `make ci` runs exactly what CI runs.
+**297 tests, 0 skipped**, entirely offline. `make ci` runs exactly what CI runs.
+
+**Timings carry error bars, including this project's own.** Over 14 successful runs CI
+averages **49.3 s ± 1.9 (SE)**, with a standard deviation of 7.2 s — 14.7% of the mean,
+range 35–59 s. So a difference smaller than about 14 s between two single runs is not
+evidence of anything, and earlier single-run figures quoted here (40 s, 47 s) were lucky
+draws rather than measurements. Regenerate with
+`uv run python scripts/ci_timing_study.py`.
 
 | Gate | Statement | Status |
 |---|---|---|
