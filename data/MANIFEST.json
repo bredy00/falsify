@@ -1,0 +1,22 @@
+{
+  "SPY_2015-01-01_2025-01-01_raw.parquet": {
+    "adjustment": "raw",
+    "auto_adjust": false,
+    "fetched_utc": "2026-08-21T10:37:14+00:00",
+    "first_ts": "2015-01-02 00:00:00",
+    "last_ts": "2024-12-31 00:00:00",
+    "rows": 2516,
+    "sha256": "ee11957b1505fcfb7f2df9d117063ce065a9ecdebd8aa1824f951b0309e19a42",
+    "source": "yfinance==1.6.0"
+  },
+  "SPY_2015-01-01_2025-01-01_total_return.parquet": {
+    "adjustment": "total_return",
+    "auto_adjust": true,
+    "fetched_utc": "2026-08-21T10:37:14+00:00",
+    "first_ts": "2015-01-02 00:00:00",
+    "last_ts": "2024-12-31 00:00:00",
+    "rows": 2516,
+    "sha256": "710fe8a2d97284d243cb38763564a9847b5d918f2020ccf44accbea3da63a15a",
+    "source": "yfinance==1.6.0"
+  }
+}

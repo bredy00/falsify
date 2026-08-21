@@ -24,6 +24,12 @@ dev = [
 docs = [
     "reportlab>=4.2",
 ]
+# Phase 5 data layer. Separate group so the gate suite -- which is offline by
+# invariant B1 and stays that way -- never needs a network library installed to run.
+data = [
+    "yfinance>=0.2.40",
+    "pyarrow>=17",
+]
 
 [build-system]
 requires = ["hatchling"]
@@ -83,7 +89,7 @@ files = ["falsify", "tests", "scripts"]
 # scipy and matplotlib ship incomplete annotations; their absence must not be
 # allowed to silently weaken checking of our own code, so this is scoped to the
 # imports themselves rather than set globally.
-module = ["scipy.*", "matplotlib.*", "reportlab.*"]
+module = ["scipy.*", "matplotlib.*", "reportlab.*", "pandas.*", "yfinance.*"]
 ignore_missing_imports = true
 
 # --------------------------------------------------------------------- pytest
@@ -95,4 +101,5 @@ xfail_strict = true
 filterwarnings = ["error"]
 markers = [
     "slow: gates that take more than a few seconds",
+    "live: needs the real-data cache; deselected in CI so the build stays offline",
 ]
