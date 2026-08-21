@@ -49,6 +49,32 @@ quoted.
 `tests/gates/test_prop.py` — 14 tests, ~12 s, numpy and scipy only, no network, no engine.
 Regenerate with `pytest tests/gates/test_prop.py -v -s`.
 
+## G9 — the price of selectivity, measured
+
+![PBO against softmax temperature for three kinds of grid](docs/figures/pbo_vs_temperature.png)
+
+`01` Part E3 predicts this curve falls monotonically as selection is diluted, with
+`EqualWeight` as the asymptote. Measured over the full C(16,8) = 12,870 splits, it does not.
+On a grid built so that the in-sample winner is mechanically the out-of-sample loser, PBO
+*rises* to a peak of 0.733 at τ = 1 before falling — a mild softmax still concentrates on the
+top few in-sample performers, which are exactly the configurations that reverse. On a grid
+with real, persistent merit the curve runs the other way, sitting near zero at τ = 1 and
+climbing to 0.324 by τ = 32, because diluting selection when the differences are real throws
+away the information that made selection worth doing.
+
+The safe temperature is therefore neither 0 nor infinity; it depends on whether the grid has
+genuine merit, which is the one thing you cannot know in advance. That is the argument for
+measuring PBO rather than assuming a selection rule is safe.
+
+`EqualWeight` cannot be the asymptote in any case: its weights are identical on every split,
+so all 12,870 are near perfectly dependent and its PBO is effectively a single draw (sd 0.26
+to 0.34 across grids). It is plotted with that spread and excluded from every assertion.
+
+`tests/gates/test_g9_pbo.py` — 16 tests, ~8 s at C(8,4). The null calibrates to 0.5 at every
+block count tested (0.4930, 0.4850, 0.4798, 0.4809 at S = 8, 10, 12, 16 over 80 grids each),
+which is what makes the 0.5 ship threshold mean anything. Regenerate the figure with
+`make g9-figure` — ~25 minutes, or instant from the cached measurements beside it.
+
 | Experiment | Measured | Reference | Verdict |
 |---|---|---|---|
 | **A** E[max z], N = 1,000, 10,000 reps brute force | 3.2394 ± 0.0035 | 3.241436 exact | 0.58 SE |
