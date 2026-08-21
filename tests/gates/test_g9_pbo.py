@@ -20,6 +20,21 @@ What was measured, before any of these tests existed:
   running more splits on one grid does not shrink it. An earlier 16-grid run put the
   null at 0.345 and looked like a 3.2-SE bias; it was an unlucky draw of seeds. Every
   bound below is therefore set against a per-grid sd of 0.22, over many grids.
+
+  Because that sd does not shrink with S, running the gate at S=8 costs nothing
+  statistically and 3.7x less in time. Measured at S=8 against S=10, over 40 grids:
+
+                       S=8                      S=10
+      null      0.5071 +/- 0.0371        0.4961 +/- 0.0375
+      merit     0.0929 +/- 0.0144        0.0901 +/- 0.0157
+      trap      0.8339 +/- 0.0229        0.7929 +/- 0.0260
+      trap vs 0.5      14.6 SE                  11.3 SE
+      tau paired  t=6.4, 16/16             t=5.3, 14/16
+      wall clock       4.7s                    17.5s
+
+  S=8 is at least as strong on every axis, which is why it is the setting here. The
+  one thing it costs is resolution: with 70 splits PBO is granular to 1/70 and the
+  trap saturates at exactly 1.0 on some grids, so the F3 check below covers both ends.
 """
 
 from __future__ import annotations
@@ -37,7 +52,7 @@ from falsify.cscv import CSCVResult, cscv, n_splits_for
 from falsify.selection import ArgMax, EqualWeight, SelectionRule, Softmax, TopK
 from falsify.synthetic import compensation_grid, merit_grid, noise_grid
 
-BLOCKS = 10  # C(10,5) = 252 splits: the null calibrates identically at S=16, far cheaper
+BLOCKS = 8  # C(8,4) = 70 splits: the null calibrates identically at S=16, and 3.7x cheaper
 GRIDS = 40
 PER_GRID_SD = 0.22  # measured over 80 grids at each of S = 8, 10, 12, 16
 
@@ -64,7 +79,7 @@ def sweep(
 ) -> tuple[CSCVResult, ...]:
     """One CSCV sweep per (builder, rule), memoised across tests.
 
-    Five tests share three sweeps; recomputing them cost 11s of a 26s gate. Caching is
+    Six tests share three sweeps; recomputing them cost 11s of a 26s gate. Caching is
     safe because the inputs are seeds rather than state and `cscv` is deterministic
     by B9 -- the results are identical either way.
 
@@ -105,7 +120,7 @@ def test_g9_enumerates_every_symmetric_half_split() -> None:
     `n_splits_for` where it is cheap to check, plus the arithmetic at 16.
     """
     grid = noise_grid(np.random.default_rng(0))
-    assert cscv(grid, ARGMAX, n_blocks=10).n_splits == n_splits_for(10) == 252
+    assert cscv(grid, ARGMAX, n_blocks=8).n_splits == n_splits_for(8) == 70
     assert cscv(grid, ARGMAX, n_blocks=12).n_splits == n_splits_for(12) == 924
     assert n_splits_for(16) == 12_870
 
@@ -131,8 +146,13 @@ def test_g9_a_saturated_pbo_is_investigated_rather_than_trusted() -> None:
 
     Measured on the grid that produces 0.0000: five distinct ranks, minimum 0.6154
     against a boundary of 0.5. A sweep that stops short, not a stuck pointer.
+
+    Both ends are checked. At S=8 the merit grids saturate at 0.0 (9 of 40) and the
+    compensation grids saturate at 1.0, so this covers a stuck pointer at either
+    extreme rather than only the flattering one.
     """
-    saturated = [r for r in sweep(merit_grid, ARGMAX) if r.pbo() in (0.0, 1.0)]
+    candidates = sweep(merit_grid, ARGMAX) + sweep(compensation_grid, ARGMAX)
+    saturated = [r for r in candidates if r.pbo() in (0.0, 1.0)]
     assert saturated, (
         "no merit grid saturated, so this test is not exercising the F3 path it exists "
         "for -- the generator drifted and the check has quietly stopped checking"
@@ -155,8 +175,8 @@ def test_g9_pbo_is_one_half_when_no_configuration_is_better_than_another() -> No
     """The null, and the justification for the 0.5 ship/no-ship line.
 
     With no differential merit the in-sample winner is a coin flip to land in either
-    out-of-sample half, so PBO must be 0.5. Measured over 80 grids: 0.4850 +/- 0.0251
-    at these settings, 0.60 SE from 0.5.
+    out-of-sample half, so PBO must be 0.5. Measured over 80 grids: 0.4930 +/- 0.0247
+    at these settings, 0.28 SE from 0.5, and 0.5071 +/- 0.0371 over the 40 used here.
 
     The tolerance is 4 SE of the mean of GRIDS draws from a per-grid sd of 0.22 -- what
     40 grids can actually resolve, not what would look impressive.
@@ -175,7 +195,7 @@ def test_g9_pbo_is_one_half_when_no_configuration_is_better_than_another() -> No
 def test_g9_pbo_is_low_when_the_differences_between_configurations_are_real() -> None:
     """Power. A gate that fires on everything is as useless as one that never fires.
 
-    Measured: 0.090 +/- 0.018 over 40 grids, worst grid 0.409 -- every one below the
+    Measured: 0.0929 +/- 0.0144 over 40 grids, worst grid 0.314 -- every one below the
     0.5 threshold, so selection on this grid ships and should.
     """
     values = pbo_over_grids(merit_grid, ARGMAX)
@@ -200,8 +220,8 @@ def test_g9_fires_on_a_grid_where_selection_is_a_trap() -> None:
     mean and the in-sample winner is mechanically the out-of-sample loser. Propositions
     3 and 5, constructed rather than hoped for.
 
-    Measured: 0.793 +/- 0.026 over 40 grids, 11.3 SE above the 0.5 threshold. Not every
-    individual grid clears it -- the best was 0.337 -- which is the per-grid sd of 0.22
+    Measured: 0.8339 +/- 0.0229 over 40 grids, 14.6 SE above the 0.5 threshold. Not every
+    individual grid clears it -- the best was 0.371 -- which is the per-grid sd of 0.22
     showing up again and is exactly why the assertion is on the mean.
     """
     values = pbo_over_grids(compensation_grid, ARGMAX)
@@ -216,7 +236,7 @@ def test_g9_fires_on_a_grid_where_selection_is_a_trap() -> None:
 
 def test_g9_separates_the_trap_from_the_genuine_grid() -> None:
     """The whole claim in one comparison: same rule, same block count, same number of
-    configurations, opposite verdicts. Measured 0.090 (merit) < 0.496 (null) < 0.793 (trap)."""
+    configurations, opposite verdicts. Measured 0.093 (merit) < 0.507 (null) < 0.834 (trap)."""
     trap, _ = summarise(pbo_over_grids(compensation_grid, ARGMAX))
     real, _ = summarise(pbo_over_grids(merit_grid, ARGMAX))
     null, _ = summarise(pbo_over_grids(noise_grid, ARGMAX))
@@ -245,8 +265,8 @@ def test_g9_cooling_the_temperature_raises_the_price_of_selectivity() -> None:
     """The robust half of 01 Part E3's expectation.
 
     E3 predicts PBO decreases monotonically in tau. Measured paired across grids, the
-    high-temperature half of that holds firmly -- PBO(tau=16) < PBO(tau=1) in 14 of 16
-    grids at these settings and 8 of 8 at S=12 -- so this asserts that half, paired,
+    high-temperature half of that holds firmly -- PBO(tau=16) < PBO(tau=1) in 16 of 16
+    grids at these settings, paired t = 6.4 -- so this asserts that half, paired,
     because the grid-to-grid sd of 0.22 dwarfs the effect and an unpaired test cannot
     see it.
 
@@ -272,39 +292,45 @@ def test_g9_cooling_the_temperature_raises_the_price_of_selectivity() -> None:
 def test_g9_pbo_is_not_monotone_in_temperature() -> None:
     """Recorded because it contradicts 01 Part E3, and the measurement wins.
 
-    E3 says "expect it to decrease monotonically". It does not. Across 8 grids at S=12
-    the mean curve runs 0.766 -> 0.810 -> 0.811 -> 0.565 -> 0.425 for
-    tau = 0.05, 0.25, 1, 4, 16: a hump, not a slope. PBO(tau=1) exceeded PBO(tau=0.05)
-    in 5 of 8 grids, which is a coin flip, so the low-temperature half of the
-    prediction is unsupported rather than merely weak.
+    E3 says "expect it to decrease monotonically". It does not: the curve is a hump.
+    Mean PBO over 8 compensation grids, at tau = 0.05, 0.25, 1, 4, 16:
+
+        S= 8   0.891  0.927  0.918  0.625  0.443
+        S=10   0.833  0.877  0.878  0.618  0.450
+        S=12   0.766  0.810  0.811  0.565  0.425
+
+    The rise from tau=0.05 to tau=0.25 is present at every block count. Per grid it is
+    a coin flip -- PBO(tau=1) > PBO(tau=0.05) in 5/8, 6/8 and 5/8 grids respectively --
+    so the assertion is on the mean curve, which is the level at which the effect is
+    actually visible. Asserting it on one grid would have been cheaper and wrong: at
+    S=8 seed 7 the low-temperature end saturates at exactly 1.000 and the hump vanishes
+    behind the ceiling.
 
     The mechanism is that a mild softmax still concentrates on the top few in-sample
     performers, and on a compensation grid those are precisely the columns that
     reverse -- while blending them cuts the portfolio's volatility and lifts its
     in-sample Sharpe. Selectivity is not diluted until tau is large enough to reach
     well down the ranking.
-
-    This test asserts only that the curve is not monotone decreasing, so that if a
-    future change makes it monotone, someone has to come back and read this.
     """
-    grid = compensation_grid(np.random.default_rng(7), n_blocks=12)
     taus = (0.05, 0.25, 1.0, 4.0, 16.0)
-    curve = [cscv(grid, Softmax(t), n_blocks=12).pbo() for t in taus]
-    print("PBO vs tau: " + "  ".join(f"{t}={p:.3f}" for t, p in zip(taus, curve, strict=True)))
+    grids = [compensation_grid(np.random.default_rng(s), n_blocks=BLOCKS) for s in range(8)]
+    curve = [st.mean([cscv(g, Softmax(t), n_blocks=BLOCKS).pbo() for g in grids]) for t in taus]
+    print("mean PBO vs tau: " + "  ".join(f"{t}={p:.3f}" for t, p in zip(taus, curve, strict=True)))
     assert curve != sorted(curve, reverse=True), (
-        "PBO came out monotone decreasing in tau on this grid. That is what 01 Part E3 "
+        "the mean PBO curve came out monotone decreasing in tau. That is what 01 Part E3 "
         "predicted and what repeated measurement contradicted; if it now holds, the "
-        "measurement above needs redoing rather than this test deleting."
+        "measurement in this docstring needs redoing rather than this test deleting."
     )
-    assert max(curve) > curve[0], "the hump is the finding; it has gone"
+    assert max(curve) > curve[0], "the hump is the finding, and it has gone"
+    assert curve[-1] < curve[0], "the high-temperature decline should still be there"
 
 
 def test_g9_equal_weight_pbo_is_a_property_of_the_grid_not_of_overfitting() -> None:
     """Why the tau -> infinity endpoint carries no information, reported not asserted.
 
-    EqualWeight returns the same weights on every split, so all 252 splits are near
+    EqualWeight returns the same weights on every split, so all 70 splits are near
     perfectly dependent and the effective sample size is about one grid. Measured over
-    12 grids: mean 0.400 with sd 0.296, spanning 0.048 to 0.837.
+    12 grids: mean 0.417 with sd 0.321, spanning 0.057 to 0.886.
 
     A single EqualWeight PBO is therefore one draw from something close to uniform, and
     reading it as "the asymptote" -- in either direction -- would be reading noise. The
