@@ -102,9 +102,7 @@ def test_block_sums_reproduce_a_direct_recomputation(grid: Matrix) -> None:
     for chosen in combinations(range(n_blocks), n_blocks // 2):
         rows = np.concatenate([blocks[b] for b in chosen])
         block = grid[rows]
-        direct = (
-            block.mean(axis=0) / block.std(axis=0, ddof=1) * math.sqrt(BARS_PER_YEAR)
-        )
+        direct = block.mean(axis=0) / block.std(axis=0, ddof=1) * math.sqrt(BARS_PER_YEAR)
         fast = moments.sharpe_over(chosen, BARS_PER_YEAR)
         worst = max(worst, float(np.max(np.abs(direct - fast))))
 

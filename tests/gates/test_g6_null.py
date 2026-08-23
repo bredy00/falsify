@@ -87,9 +87,7 @@ def null_ensemble(bars: Bars, target: TurnoverSpec) -> dict[str, NDArray[np.floa
     kept_returns: list[NDArray[np.float64]] = []
 
     for i in range(N_NULLS):
-        null = RandomSign(
-            len(bars), np.random.default_rng(NULL_SEED_BASE + i), p, target.exposure
-        )
+        null = RandomSign(len(bars), np.random.default_rng(NULL_SEED_BASE + i), p, target.exposure)
         result = run_vectorized(bars, null, ZERO_COST, CAPITAL, CONVENTION)
         net = result.net_ret[1:]
         per_bar = sharpe(net)
@@ -247,7 +245,9 @@ def test_g6_null_spread_matches_sampling_theory(
     """
     observed = float(np.std(null_ensemble["sharpe_annual"], ddof=1))
     expected = math.sqrt(BARS_PER_YEAR / (N_BARS - 3))
-    print(f"null SR sd: observed {observed:.4f}  theory sqrt(252/T) {expected:.4f}  ratio {observed / expected:.4f}")
+    print(
+        f"null SR sd: observed {observed:.4f}  theory sqrt(252/T) {expected:.4f}  ratio {observed / expected:.4f}"
+    )
     assert 0.8 < observed / expected < 1.2, (
         f"null Sharpe spread {observed:.4f} against a theoretical {expected:.4f}. Far too "
         "narrow usually means the nulls share randomness rather than being independent."
@@ -403,9 +403,7 @@ def test_g6_psr_collapses_to_the_iid_form_for_normal_returns() -> None:
     returns = 0.01 * (standardised + target_sr)
     sr = sharpe(returns)
     assert sr == pytest.approx(target_sr, abs=1e-12), "the construction should pin SR exactly"
-    reference = float(
-        norm.cdf(sr * math.sqrt(len(returns) - 1) / math.sqrt(1.0 + 0.5 * sr * sr))
-    )
+    reference = float(norm.cdf(sr * math.sqrt(len(returns) - 1) / math.sqrt(1.0 + 0.5 * sr * sr)))
     got = psr(returns, 0.0)
     print(
         f"PSR normal collapse: got {got:.10f}  iid form {reference:.10f}  "
@@ -428,8 +426,7 @@ def test_g6_psr_collapses_to_the_iid_form_for_normal_returns() -> None:
     assert abs(non_excess - excess - 3.0) < 1e-9
     wrong = float(
         norm.cdf(
-            sr * math.sqrt(len(returns) - 1)
-            / math.sqrt(1.0 + ((excess - 1.0) / 4.0) * sr * sr)
+            sr * math.sqrt(len(returns) - 1) / math.sqrt(1.0 + ((excess - 1.0) / 4.0) * sr * sr)
         )
     )
     print(f"  with excess kurtosis instead: {wrong:.10f}  (shift {abs(wrong - got):.2e})")

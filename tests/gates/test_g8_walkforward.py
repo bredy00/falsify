@@ -109,8 +109,9 @@ def test_g8_embargo_removes_bars_after_the_test_block() -> None:
             f"{min(n_embargo, after_bare.size)}"
         )
         # And it must not have touched the bars before the block.
-        assert np.array_equal(bare.train[bare.train < bare.test[0]],
-                              guarded.train[guarded.train < guarded.test[0]]), (
+        assert np.array_equal(
+            bare.train[bare.train < bare.test[0]], guarded.train[guarded.train < guarded.test[0]]
+        ), (
             "the embargo removed bars before the test block; that is the purge's job "
             "and the two have been transposed"
         )
@@ -430,8 +431,7 @@ def test_g8_ranking_informs_only_where_a_real_edge_exists(grid: StrategyGrid) ->
     slope, stderr = selection_degradation_slope(result)
     stitched = result.stitched_sharpe()
     print(
-        f"AR(1): IS->OOS slope {slope:+.4f} +/- {stderr:.4f}  "
-        f"stitched OOS Sharpe {stitched:+.4f}"
+        f"AR(1): IS->OOS slope {slope:+.4f} +/- {stderr:.4f}  stitched OOS Sharpe {stitched:+.4f}"
     )
     assert np.isfinite(slope) and np.isfinite(stderr)
     assert stitched > 0.0, (

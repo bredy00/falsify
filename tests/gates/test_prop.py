@@ -36,12 +36,12 @@ from scipy.integrate import quad
 from scipy.stats import linregress, norm
 
 EULER = 0.5772156649015329  # Euler-Mascheroni constant
-ANN = math.sqrt(252.0)      # annualisation for daily bars; display boundary only (B8)
-MASTER_SEED = 20140458      # Notices of the AMS 61(5), May 2014, p. 458
+ANN = math.sqrt(252.0)  # annualisation for daily bars; display boundary only (B8)
+MASTER_SEED = 20140458  # Notices of the AMS 61(5), May 2014, p. 458
 
-N_PATHS = 1000              # paths per experiment
-T_BARS = 1000               # daily bars per path
-SPLIT = T_BARS // 2         # in-sample / out-of-sample midpoint
+N_PATHS = 1000  # paths per experiment
+T_BARS = 1000  # daily bars per path
+SPLIT = T_BARS // 2  # in-sample / out-of-sample midpoint
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FIGURE_PATH = REPO_ROOT / "docs" / "figures" / "compensation_effect.png"
@@ -68,7 +68,7 @@ SWEEP_REPS = 200_000
 # decays monotonically from N = 5 -- so its bias in the DSR is conservative
 # (a stricter SR_0 benchmark) everywhere the build will use it.
 GUMBEL_MONOTONE_FROM = 5
-GUMBEL_OVER_ONE_PCT = (5, 10, 20, 50)     # approximation error > 1% here
+GUMBEL_OVER_ONE_PCT = (5, 10, 20, 50)  # approximation error > 1% here
 GUMBEL_UNDER_ONE_PCT = (100, 1_000, 100_000)  # and < 1% from N = 100 upward
 
 LOG_HALF = -math.log(2.0)
@@ -149,12 +149,8 @@ def expected_max_normal_exact(n: int) -> float:
     Validated against the closed forms at n = 1, 2, 3 by
     test_exact_reference_matches_closed_form.
     """
-    upper, upper_err = quad(
-        lambda x: -math.expm1(n * norm.logcdf(x)), 0.0, np.inf, limit=400
-    )
-    lower, lower_err = quad(
-        lambda x: math.exp(n * norm.logcdf(x)), -np.inf, 0.0, limit=400
-    )
+    upper, upper_err = quad(lambda x: -math.expm1(n * norm.logcdf(x)), 0.0, np.inf, limit=400)
+    lower, lower_err = quad(lambda x: math.exp(n * norm.logcdf(x)), -np.inf, 0.0, limit=400)
     total_err = upper_err + lower_err
     assert total_err < 1e-6, f"quadrature error {total_err:.2e} too large at n={n}"
     return float(upper - lower)
@@ -298,7 +294,9 @@ def test_exact_reference_matches_closed_form() -> None:
     )
     for n, closed, name in cases:
         got = expected_max_normal_exact(n)
-        print(f"n={n}: quad={got:.15f}  closed={closed:.15f} ({name})  diff={abs(got - closed):.2e}")
+        print(
+            f"n={n}: quad={got:.15f}  closed={closed:.15f} ({name})  diff={abs(got - closed):.2e}"
+        )
         assert abs(got - closed) < 1e-10, (
             f"n={n}: quadrature {got:.15f} != closed form {closed:.15f} ({name}); "
             "the exact reference is not exact"
@@ -354,7 +352,9 @@ def test_experiment_a_monte_carlo_matches_exact(sweep_a: SweepMeasurements) -> N
             worst_n, worst_gap = n, gap
         print(f"N={n:>9,}  emp={emp:.5f} +/- {se:.5f}  exact={exact:.5f}  gap={gap:.2f} SE")
         assert gap < 4.0, f"N={n}: empirical {emp:.5f} is {gap:.1f} SE from exact {exact:.5f}"
-    print(f"worst deviation across {len(sweep_a.ns)} values of N: {worst_gap:.2f} SE at N={worst_n:,}")
+    print(
+        f"worst deviation across {len(sweep_a.ns)} values of N: {worst_gap:.2f} SE at N={worst_n:,}"
+    )
 
 
 def test_experiment_a_growth_tracks_sqrt_2_log_n() -> None:
@@ -369,9 +369,7 @@ def test_experiment_a_growth_tracks_sqrt_2_log_n() -> None:
     for n, e, b, r in zip(SWEEP_A, exacts, bounds, ratios, strict=True):
         print(f"N={n:>9,}  exact={e:.4f}  sqrt(2lnN)={b:.4f}  ratio={r:.4f}")
         assert e < b, f"N={n}: exact {e:.4f} not below the sqrt(2 ln N) bound {b:.4f}"
-    assert all(b > a for a, b in pairwise(exacts)), (
-        f"E[max] must grow with N, got {exacts}"
-    )
+    assert all(b > a for a, b in pairwise(exacts)), f"E[max] must grow with N, got {exacts}"
     assert all(b > a for a, b in pairwise(ratios)), (
         f"E[max] must approach sqrt(2 ln N) from below as N grows, got {ratios}"
     )
@@ -451,8 +449,7 @@ def test_experiment_b_winner_oos_is_zero(exp_b: SelectionRun) -> None:
         f"IS = {exp_b.base.sr_is[pick]:.2f}, OOS = {exp_b.base.sr_oos[pick]:+.2f}"
     )
     assert abs(mean) < 2.0 * se, (
-        f"selected-path OOS Sharpe mean {mean:+.4f} is not within "
-        f"2*SE = {2 * se:.4f} of zero"
+        f"selected-path OOS Sharpe mean {mean:+.4f} is not within 2*SE = {2 * se:.4f} of zero"
     )
 
 
@@ -532,8 +529,7 @@ def test_control_slope_detector_responds_to_the_treatment() -> None:
         "detector is responding to something other than the treatment"
     )
     assert after.slope < -0.5, (
-        f"treated slope {after.slope:+.4f} is not the near-exact reversal "
-        "Proposition 3 requires"
+        f"treated slope {after.slope:+.4f} is not the near-exact reversal Proposition 3 requires"
     )
 
 
@@ -578,8 +574,7 @@ def test_control_monte_carlo_detects_a_wrong_reference() -> None:
         f"Gumbel reference {bad:.2f} SE away (must be rejected)"
     )
     assert good < 4.0 <= bad, (
-        f"the 4-SE band does not discriminate: exact {good:.1f} SE, "
-        f"approximation {bad:.1f} SE"
+        f"the 4-SE band does not discriminate: exact {good:.1f} SE, approximation {bad:.1f} SE"
     )
 
 

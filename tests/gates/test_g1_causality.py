@@ -316,9 +316,7 @@ def test_a4_oracle_does_not_leak_and_has_no_edge(prices: Prices) -> None:
 
 
 @pytest.mark.parametrize("strategy", HONEST, ids=lambda s: s.name)
-def test_honest_strategies_also_survive_the_strict_cut(
-    strategy: Strategy, prices: Prices
-) -> None:
+def test_honest_strategies_also_survive_the_strict_cut(strategy: Strategy, prices: Prices) -> None:
     """The honest strategies lag their decisions, so they pass the stricter
     execution-alignment check too -- which is what makes `shift(1)` a proven claim
     here rather than an asserted one."""

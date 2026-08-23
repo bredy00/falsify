@@ -143,7 +143,9 @@ def test_buy_and_hold_is_the_bar_everything_else_has_to_clear(spy: Bars) -> None
     for name, value in others.items():
         print(f"  {name:<20} SR {value:+.3f} at 5 bps")
 
-    assert hold > 0.4, f"SPY buy-and-hold over 2015-2024 should be clearly positive, got {hold:+.3f}"
+    assert hold > 0.4, (
+        f"SPY buy-and-hold over 2015-2024 should be clearly positive, got {hold:+.3f}"
+    )
     assert all(value < hold for value in others.values()), (
         "a strategy beat buy-and-hold on this window; that would be worth investigating "
         "rather than celebrating"

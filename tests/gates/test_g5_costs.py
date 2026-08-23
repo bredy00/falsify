@@ -67,9 +67,7 @@ def test_g5_net_sharpe_is_non_increasing_in_cost(sweep: CostSweep) -> None:
     )
 
 
-def test_g5_break_even_cost_is_finite_and_reported(
-    sweep: CostSweep, trending_bars: Bars
-) -> None:
+def test_g5_break_even_cost_is_finite_and_reported(sweep: CostSweep, trending_bars: Bars) -> None:
     """c* must be a real number inside the swept range, and the sweep must be wide
     enough to have actually bracketed it rather than extrapolating."""
     c_star = sweep.break_even_bps()
@@ -82,14 +80,24 @@ def test_g5_break_even_cost_is_finite_and_reported(
 
     # The crossing is real: below c* the Sharpe is positive, above it is not.
     below = run_vectorized(
-        trending_bars, CausalZScore(20), CostModel(commission_bps=c_star * 0.5), CAPITAL, "next_open"
+        trending_bars,
+        CausalZScore(20),
+        CostModel(commission_bps=c_star * 0.5),
+        CAPITAL,
+        "next_open",
     )
     above = run_vectorized(
-        trending_bars, CausalZScore(20), CostModel(commission_bps=c_star * 1.5), CAPITAL, "next_open"
+        trending_bars,
+        CausalZScore(20),
+        CostModel(commission_bps=c_star * 1.5),
+        CAPITAL,
+        "next_open",
     )
     sr_below = annualise_sharpe(sharpe(below.net_ret[1:]))
     sr_above = annualise_sharpe(sharpe(above.net_ret[1:]))
-    print(f"  at {c_star * 0.5:.2f} bps SR = {sr_below:+.4f};  at {c_star * 1.5:.2f} bps SR = {sr_above:+.4f}")
+    print(
+        f"  at {c_star * 0.5:.2f} bps SR = {sr_below:+.4f};  at {c_star * 1.5:.2f} bps SR = {sr_above:+.4f}"
+    )
     assert sr_below > 0.0 > sr_above, "c* does not actually separate profit from loss"
 
 
@@ -111,9 +119,7 @@ def test_g5_zero_turnover_is_indifferent_to_cost() -> None:
     assert math.isnan(flat.break_even_bps()) or flat.break_even_bps() == 0.0
 
 
-@pytest.mark.parametrize(
-    "strategy", [MACrossover(5, 15), CausalZScore(20)], ids=lambda s: s.name
-)
+@pytest.mark.parametrize("strategy", [MACrossover(5, 15), CausalZScore(20)], ids=lambda s: s.name)
 def test_g5_monotone_across_the_zoo(strategy: Strategy, trending_bars: Bars) -> None:
     """Monotonicity is a property of the accounting, not of one strategy."""
     result = sweep_costs(trending_bars, strategy, GRID, CAPITAL, "next_open")

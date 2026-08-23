@@ -64,9 +64,14 @@ def good_frame(n: int = 40) -> pd.DataFrame:
 def test_manifest_round_trips(tmp_path: Path) -> None:
     path = tmp_path / "MANIFEST.json"
     entry = ManifestEntry(
-        sha256="a" * 64, rows=10, fetched_utc="2026-08-20T00:00:00+00:00",
-        source="yfinance==1.6.0", adjustment="total_return", auto_adjust=True,
-        first_ts="2020-01-02", last_ts="2020-02-28",
+        sha256="a" * 64,
+        rows=10,
+        fetched_utc="2026-08-20T00:00:00+00:00",
+        source="yfinance==1.6.0",
+        adjustment="total_return",
+        auto_adjust=True,
+        first_ts="2020-01-02",
+        last_ts="2020-02-28",
     )
     record(path, "k.parquet", entry)
     assert load_manifest(path)["k.parquet"] == entry
@@ -91,9 +96,7 @@ def test_verify_detects_a_tampered_file(tmp_path: Path) -> None:
     cache.mkdir()
     target = cache / "k.parquet"
     target.write_bytes(b"original bytes")
-    record(path, "k.parquet", ManifestEntry(
-        sha256_of(target), 1, "t", "s", "raw", False, "a", "b"
-    ))
+    record(path, "k.parquet", ManifestEntry(sha256_of(target), 1, "t", "s", "raw", False, "a", "b"))
     verify(path, cache, "k.parquet")  # clean
 
     target.write_bytes(b"tampered bytes")
@@ -243,9 +246,11 @@ def test_a_cache_hit_is_verified_before_it_is_trusted(tmp_path: Path) -> None:
     target = cache / SPEC.cache_key
     frame = good_frame()
     frame.to_parquet(target)
-    record(manifest, SPEC.cache_key, ManifestEntry(
-        sha256_of(target), len(frame), "t", "test", "total_return", True, "a", "b"
-    ))
+    record(
+        manifest,
+        SPEC.cache_key,
+        ManifestEntry(sha256_of(target), len(frame), "t", "test", "total_return", True, "a", "b"),
+    )
 
     bars = load(SPEC, cache_dir=cache, manifest_path=manifest)
     assert len(bars) == len(frame)
@@ -263,9 +268,13 @@ def test_row_count_disagreement_is_caught(tmp_path: Path) -> None:
     target = cache / SPEC.cache_key
     frame = good_frame()
     frame.to_parquet(target)
-    record(manifest, SPEC.cache_key, ManifestEntry(
-        sha256_of(target), 999, len(frame) * "t", "test", "total_return", True, "a", "b"
-    ))
+    record(
+        manifest,
+        SPEC.cache_key,
+        ManifestEntry(
+            sha256_of(target), 999, len(frame) * "t", "test", "total_return", True, "a", "b"
+        ),
+    )
     with pytest.raises(ValidationFailed, match="manifest says 999"):
         load(SPEC, cache_dir=cache, manifest_path=manifest)
 

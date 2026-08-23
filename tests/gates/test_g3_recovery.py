@@ -226,7 +226,9 @@ def test_g3_recovers_growth_rate(ensemble: dict[str, NDArray[np.float64]]) -> No
     """
     mean, se = mean_se(ensemble["log_drift"])
     gap = abs(mean - TRUE_LOG_DRIFT) / se
-    print(f"log drift:        {mean:+.5f} +/- {se:.5f}  target {TRUE_LOG_DRIFT:+.5f}  gap {gap:.2f} SE")
+    print(
+        f"log drift:        {mean:+.5f} +/- {se:.5f}  target {TRUE_LOG_DRIFT:+.5f}  gap {gap:.2f} SE"
+    )
     assert gap < 2.0, (
         f"annualised log drift {mean:+.5f} is {gap:.1f} SE from mu - sigma^2/2 = {TRUE_LOG_DRIFT}"
     )
@@ -270,9 +272,13 @@ def test_gate_02_standard_error_falls_as_one_over_root_m() -> None:
     counts = (10, 50, 100, 500, 1000, 5000)
     draws = np.asarray(
         [
-            annualise_sharpe(sharpe(np.diff(np.log(
-                gbm(MU, SIGMA, 260, np.random.default_rng(MASTER_SEED + 10_000 + i))
-            ))))
+            annualise_sharpe(
+                sharpe(
+                    np.diff(
+                        np.log(gbm(MU, SIGMA, 260, np.random.default_rng(MASTER_SEED + 10_000 + i)))
+                    )
+                )
+            )
             for i in range(max(counts))
         ]
     )
@@ -305,7 +311,9 @@ def test_gate_03_finds_edge_that_exists_and_none_that_does_not() -> None:
     gbm_sr: list[float] = []
     ar1_sr: list[float] = []
     for i in range(n_paths):
-        flat = bars_from_close(gbm(0.0, SIGMA, n_bars, np.random.default_rng(MASTER_SEED + 2_000 + i)))
+        flat = bars_from_close(
+            gbm(0.0, SIGMA, n_bars, np.random.default_rng(MASTER_SEED + 2_000 + i))
+        )
         mean_reverting = bars_from_close(
             ar1(phi, 0.02, n_bars, np.random.default_rng(MASTER_SEED + 3_000 + i))
         )
@@ -342,7 +350,9 @@ def test_sharpe_se_collapses_to_the_iid_expression() -> None:
     sr = sharpe(returns)
     expected = math.sqrt((1.0 + 0.5 * sr * sr) / (len(returns) - 1))
     got = sharpe_se(returns)
-    print(f"SE(SR) = {got:.8f}  iid expression = {expected:.8f}  rel = {abs(got - expected) / expected:.3%}")
+    print(
+        f"SE(SR) = {got:.8f}  iid expression = {expected:.8f}  rel = {abs(got - expected) / expected:.3%}"
+    )
     assert abs(got - expected) / expected < 0.05, (
         f"SE {got:.8f} differs from the i.i.d. form {expected:.8f} by more than sampling "
         "noise in skew and kurtosis explains; check fisher=False"
@@ -360,7 +370,9 @@ def test_excess_kurtosis_would_change_the_answer() -> None:
     assert abs(non_excess - excess - 3.0) < 1e-9, "scipy's two conventions differ by exactly 3"
     right = math.sqrt((1.0 - 0.0 * sr + ((non_excess - 1.0) / 4.0) * sr * sr) / (len(returns) - 1))
     wrong = math.sqrt(abs(1.0 - 0.0 * sr + ((excess - 1.0) / 4.0) * sr * sr) / (len(returns) - 1))
-    print(f"non-excess g4 = {non_excess:.3f} -> SE {right:.8f};  excess g4 = {excess:.3f} -> SE {wrong:.8f}")
+    print(
+        f"non-excess g4 = {non_excess:.3f} -> SE {right:.8f};  excess g4 = {excess:.3f} -> SE {wrong:.8f}"
+    )
     assert abs(right - wrong) / right > 1e-6, "the convention must actually matter"
 
 
@@ -399,9 +411,7 @@ def test_summarise_reports_a_sharpe_with_its_error_bar() -> None:
     bars = bars_from_close(gbm(MU, SIGMA, 1200, np.random.default_rng(99)))
     result = run_vectorized(bars, BuyAndHold(), ZERO_COST, CAPITAL, "close_to_close")
     window_ts = bars.ts[len(bars) - len(result) :]
-    perf = summarise(
-        result.net_ret[1:], result.equity, result.weights, elapsed_years(window_ts)
-    )
+    perf = summarise(result.net_ret[1:], result.equity, result.weights, elapsed_years(window_ts))
     print(perf.describe())
     lo, hi = perf.sharpe_ci95()
     assert lo < perf.sharpe_annual < hi

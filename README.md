@@ -140,7 +140,7 @@ draws rather than measurements. Regenerate with
 | **G7** | Leakage trap: deliberately leaky pipelines must be caught | **green** — 5 traps rejected |
 | **G8** | Purged, embargoed walk-forward | **green** — 3 splitters, purge + embargo asserted |
 | G9 | PBO via CSCV over 12,870 splits, on `SelectionRule` | green; null calibrates to 0.5, fires on a compensation trap at 0.79 |
-| G10 | Reproducibility from pinned hashes | partial — figure bytes and numeric output stable |
+| G10 | Reproducibility from pinned hashes | green — two runs byte-identical across three figures and `metrics.json` |
 
 Everything through G8 runs with no network, no API key and no rate limit. That is the whole point of
 the ordering in `00`: the certified core is testable in CI without a single flaky test that fails

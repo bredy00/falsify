@@ -103,9 +103,7 @@ def test_g4_no_cost_is_charged_when_the_model_is_zero(engine: object, bars: Bars
 
 
 @pytest.mark.parametrize("engine", ENGINES, ids=lambda e: e.__name__)
-def test_g4_flat_position_at_zero_cost_and_zero_yield_is_flat(
-    engine: object, bars: Bars
-) -> None:
+def test_g4_flat_position_at_zero_cost_and_zero_yield_is_flat(engine: object, bars: Bars) -> None:
     """Weight zero, no cash yield: equity must not move by a single bit. Catches a
     cash term that leaks in when it should be switched off."""
     result = engine(bars, Flat(), ZERO_COST, CAPITAL, "next_open")  # type: ignore[operator]

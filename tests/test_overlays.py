@@ -56,7 +56,9 @@ def test_buffer_turnover_decreases_monotonically_with_the_band(bars: Bars) -> No
     base = CausalZScore(20)
     turnovers = [
         realised_turnover_annual(
-            run_vectorized(bars, TurnoverBuffer(base, band), ZERO_COST, CAPITAL, "next_open").turnover
+            run_vectorized(
+                bars, TurnoverBuffer(base, band), ZERO_COST, CAPITAL, "next_open"
+            ).turnover
         )
         for band in (0.0, 0.1, 0.25, 0.5, 0.75)
     ]
