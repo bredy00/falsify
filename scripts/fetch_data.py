@@ -22,6 +22,7 @@ from falsify.data.loaders import (
     describe_biases,
     load,
 )
+from falsify.data.rates import DEFAULT_TICKER, RateSpec, load_rate
 
 # SPY only, per 03 Part H decision 1: a single ticker removes survivorship bias
 # entirely as a confound, which keeps the statistical argument clean.
@@ -29,6 +30,10 @@ SPECS = (
     FetchSpec("SPY", "2015-01-01", "2025-01-01", "total_return"),
     FetchSpec("SPY", "2015-01-01", "2025-01-01", "raw"),
 )
+
+# 03 Part H decision 4: the risk-free term must exist, set to the period mean of
+# 3-month T-bills, with the constant recorded in the manifest.
+RATE_SPEC = RateSpec(DEFAULT_TICKER, "2015-01-01", "2025-01-01")
 
 
 def main() -> int:
@@ -48,6 +53,19 @@ def main() -> int:
             f"  ok {spec.cache_key}: {len(bars)} bars, "
             f"{bars.ts[0]} .. {bars.ts[-1]}, auto_adjust={spec.auto_adjust}"
         )
+
+    print("\nrisk-free rate (03 Part H decision 4):")
+    try:
+        rate = load_rate(
+            RATE_SPEC,
+            allow_network=True,
+            cache_dir=DEFAULT_CACHE,
+            manifest_path=DEFAULT_MANIFEST,
+        )
+    except Exception as exc:
+        print(f"  FAILED {RATE_SPEC.cache_key}: {type(exc).__name__}: {exc}")
+        return 1
+    print(f"  {rate.describe()}")
 
     print("\nbiases stated rather than fixed:")
     for name, text in describe_biases().items():

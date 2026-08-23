@@ -18,5 +18,15 @@
     "rows": 2516,
     "sha256": "710fe8a2d97284d243cb38763564a9847b5d918f2020ccf44accbea3da63a15a",
     "source": "yfinance==1.6.0"
+  },
+  "^IRX_2015-01-01_2025-01-01_rate.parquet": {
+    "adjustment": "rate",
+    "auto_adjust": false,
+    "fetched_utc": "2026-08-23T10:05:58.309578+00:00",
+    "first_ts": "2015-01-02 00:00:00",
+    "last_ts": "2024-12-31 00:00:00",
+    "rows": 2515,
+    "sha256": "d6617b318f2e7592192683e6fe034073f8bd494de8d317184b94afce79632111",
+    "source": "yfinance==1.6.0"
   }
 }
