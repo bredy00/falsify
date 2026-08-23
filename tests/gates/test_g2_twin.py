@@ -31,9 +31,15 @@ from falsify.core.event import benchmark_equity, run_event
 from falsify.core.types import Bars, InsufficientHistory
 from falsify.core.vectorized import run_vectorized
 from falsify.costs import ZERO_COST, CostModel
+from falsify.ledger import Ledger
 from falsify.strategies.base import Strategy
 from falsify.strategies.simple import ZOO, BuyAndHold, CausalZScore, MACrossover
 from falsify.synthetic import bars_from_close
+
+# B3: the engines take a ledger, always. In-memory and non-persisting here --
+# every invocation is still counted, which is what lets a test assert its own
+# search size, but the gate suite does not write to the shipped ledger.
+LEDGER = Ledger.memory()
 
 HONEST = ZOO
 
@@ -83,8 +89,8 @@ def test_g2_engines_agree_across_zoo_and_conventions(
     strategy: Strategy, convention: Convention, bars: Bars
 ) -> None:
     """The gate itself, at Part F3's tolerance."""
-    a = run_event(bars, strategy, ZERO_COST, INITIAL_CAPITAL, convention)
-    b = run_vectorized(bars, strategy, ZERO_COST, INITIAL_CAPITAL, convention)
+    a = run_event(bars, strategy, ZERO_COST, INITIAL_CAPITAL, convention, ledger=LEDGER)
+    b = run_vectorized(bars, strategy, ZERO_COST, INITIAL_CAPITAL, convention, ledger=LEDGER)
 
     deviation = max_relative_deviation(a.equity, b.equity)
     print(f"{strategy.name:14s} {convention:15s} max relative equity deviation {deviation:.3e}")
@@ -100,8 +106,8 @@ def test_g2_holds_across_the_cost_sweep(costs: CostModel, bars: Bars) -> None:
     """Costs enter the recursion through `equity[k-1]`, so they are exactly where
     an accumulation-order difference would surface."""
     strategy = MACrossover(5, 15)
-    a = run_event(bars, strategy, costs, INITIAL_CAPITAL, "next_open")
-    b = run_vectorized(bars, strategy, costs, INITIAL_CAPITAL, "next_open")
+    a = run_event(bars, strategy, costs, INITIAL_CAPITAL, "next_open", ledger=LEDGER)
+    b = run_vectorized(bars, strategy, costs, INITIAL_CAPITAL, "next_open", ledger=LEDGER)
 
     for name, left, right in (
         ("equity", a.equity, b.equity),
@@ -140,8 +146,8 @@ def test_g2_holds_for_arbitrary_price_series(
     strategy = CausalZScore(12)
     costs = CostModel(commission_bps=3.0, cash_yield_annual=0.04, borrow_bps_annual=50.0)
 
-    a = run_event(bars, strategy, costs, INITIAL_CAPITAL, convention)
-    b = run_vectorized(bars, strategy, costs, INITIAL_CAPITAL, convention)
+    a = run_event(bars, strategy, costs, INITIAL_CAPITAL, convention, ledger=LEDGER)
+    b = run_vectorized(bars, strategy, costs, INITIAL_CAPITAL, convention, ledger=LEDGER)
     deviation = max_relative_deviation(a.equity, b.equity)
     assert deviation < TOLERANCE, (
         f"seed={seed} sigma={sigma:.4f} convention={convention}: deviation {deviation:.3e}"
@@ -177,8 +183,8 @@ class OffByOneEngineBug(Strategy):
 def test_g2_fires_on_an_engine_disagreement(bars: Bars) -> None:
     """A gate that has never failed is not a gate (03 Part F, F7)."""
     strategy = OffByOneEngineBug()
-    a = run_event(bars, strategy, ZERO_COST, INITIAL_CAPITAL, "next_open")
-    b = run_vectorized(bars, strategy, ZERO_COST, INITIAL_CAPITAL, "next_open")
+    a = run_event(bars, strategy, ZERO_COST, INITIAL_CAPITAL, "next_open", ledger=LEDGER)
+    b = run_vectorized(bars, strategy, ZERO_COST, INITIAL_CAPITAL, "next_open", ledger=LEDGER)
     deviation = max_relative_deviation(a.equity, b.equity)
     print(f"planted disagreement: max relative equity deviation {deviation:.3e}")
     assert deviation > TOLERANCE, (
@@ -197,7 +203,7 @@ def test_equity_and_benchmark_start_at_initial_capital(convention: Convention, b
     compound second, and the two curves share a base.
     """
     for engine in (run_event, run_vectorized):
-        result = engine(bars, BuyAndHold(), ZERO_COST, INITIAL_CAPITAL, convention)
+        result = engine(bars, BuyAndHold(), ZERO_COST, INITIAL_CAPITAL, convention, ledger=LEDGER)
         bench = benchmark_equity(bars, BuyAndHold().lookback, INITIAL_CAPITAL, convention)
         assert result.equity[0] == INITIAL_CAPITAL
         assert bench[0] == INITIAL_CAPITAL
@@ -210,7 +216,7 @@ def test_buy_and_hold_at_zero_cost_is_the_benchmark(convention: Convention, bars
     curve *is* buy-and-hold. Exact float equality, not approximate."""
     bench = benchmark_equity(bars, BuyAndHold().lookback, INITIAL_CAPITAL, convention)
     for engine in (run_event, run_vectorized):
-        result = engine(bars, BuyAndHold(), ZERO_COST, INITIAL_CAPITAL, convention)
+        result = engine(bars, BuyAndHold(), ZERO_COST, INITIAL_CAPITAL, convention, ledger=LEDGER)
         assert np.array_equal(result.equity, bench), (
             f"{engine.__name__}/{convention}: zero-cost buy-and-hold deviates from "
             f"buy-and-hold by up to {max_relative_deviation(bench, result.equity):.3e}"
@@ -223,7 +229,9 @@ def test_net_return_reconstructs_the_equity_path(bars: Bars) -> None:
     `gross - cost_rate`, the additive approximation Part E rejects."""
     costs = CostModel(commission_bps=8.0, half_spread_bps=2.0, cash_yield_annual=0.03)
     for engine in (run_event, run_vectorized):
-        result = engine(bars, MACrossover(5, 15), costs, INITIAL_CAPITAL, "next_open")
+        result = engine(
+            bars, MACrossover(5, 15), costs, INITIAL_CAPITAL, "next_open", ledger=LEDGER
+        )
         rebuilt = INITIAL_CAPITAL * np.cumprod(1.0 + result.net_ret)
         assert np.allclose(rebuilt, result.equity, rtol=1e-13, atol=0.0), engine.__name__
 
@@ -233,7 +241,9 @@ def test_cost_is_charged_on_traded_notional(bars: Bars) -> None:
     portfolio return. The two coincide only while positions are 0/1 and fully
     allocated, and diverge the moment sizing is added."""
     costs = CostModel(commission_bps=10.0)
-    result = run_vectorized(bars, MACrossover(5, 15), costs, INITIAL_CAPITAL, "next_open")
+    result = run_vectorized(
+        bars, MACrossover(5, 15), costs, INITIAL_CAPITAL, "next_open", ledger=LEDGER
+    )
     expected = result.turnover[1:] * result.equity[:-1] * costs.cost_rate()
     assert np.allclose(result.costs[1:], expected, rtol=0.0, atol=0.0)
     assert result.costs[0] == 0.0
@@ -255,7 +265,7 @@ def test_cash_yield_is_earned_on_the_unallocated_fraction() -> None:
     bars = bars_from_close(gbm_close(MASTER_SEED + 9))
     costs = CostModel(cash_yield_annual=0.05)
     for engine in (run_event, run_vectorized):
-        result = engine(bars, Flat(), costs, INITIAL_CAPITAL, "next_open")
+        result = engine(bars, Flat(), costs, INITIAL_CAPITAL, "next_open", ledger=LEDGER)
         per_bar = 0.05 / 252.0
         assert np.allclose(result.gross_ret[1:], per_bar, rtol=1e-15, atol=0.0), engine.__name__
         assert result.equity[-1] > INITIAL_CAPITAL, "idle cash must accrue"
@@ -270,20 +280,22 @@ def test_too_few_bars_raises_rather_than_returning_an_empty_result() -> None:
     short = bars_from_close(gbm_close(1, n=20))
     for engine in (run_event, run_vectorized):
         with pytest.raises(InsufficientHistory, match="too few"):
-            engine(short, MACrossover(20, 50), ZERO_COST, INITIAL_CAPITAL, "next_open")
+            engine(
+                short, MACrossover(20, 50), ZERO_COST, INITIAL_CAPITAL, "next_open", ledger=LEDGER
+            )
 
 
 @pytest.mark.parametrize("capital", [0.0, -1.0])
 def test_non_positive_capital_is_rejected(capital: float, bars: Bars) -> None:
     for engine in (run_event, run_vectorized):
         with pytest.raises(ValueError, match="initial_capital"):
-            engine(bars, BuyAndHold(), ZERO_COST, capital, "next_open")
+            engine(bars, BuyAndHold(), ZERO_COST, capital, "next_open", ledger=LEDGER)
 
 
 def test_unknown_convention_is_rejected(bars: Bars) -> None:
     for engine in (run_event, run_vectorized):
         with pytest.raises(ValueError, match="unknown convention"):
-            engine(bars, BuyAndHold(), ZERO_COST, INITIAL_CAPITAL, "at_the_vwap")  # type: ignore[arg-type]
+            engine(bars, BuyAndHold(), ZERO_COST, INITIAL_CAPITAL, "at_the_vwap", ledger=LEDGER)  # type: ignore[arg-type]
 
 
 @pytest.mark.parametrize("field", ["commission_bps", "cash_yield_annual", "borrow_bps_annual"])
@@ -297,7 +309,7 @@ def test_conventions_are_actually_distinct(bars: Bars) -> None:
     asks for would be meaningless, and a lag bug would hide."""
     strategy = MACrossover(5, 15)
     curves = {
-        c: run_vectorized(bars, strategy, ZERO_COST, INITIAL_CAPITAL, c).equity[-1]
+        c: run_vectorized(bars, strategy, ZERO_COST, INITIAL_CAPITAL, c, ledger=LEDGER).equity[-1]
         for c in CONVENTIONS
     }
     print("final equity by convention: " + "  ".join(f"{k}={v:.4f}" for k, v in curves.items()))

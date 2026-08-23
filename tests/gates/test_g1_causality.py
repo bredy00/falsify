@@ -34,12 +34,18 @@ from falsify.core.types import Bars
 from falsify.core.vectorized import run_vectorized
 from falsify.costs import ZERO_COST
 from falsify.features import rolling_mean, shift_one
+from falsify.ledger import Ledger
 from falsify.metrics import annualise_sharpe, sharpe
 from falsify.strategies.base import Strategy
 from falsify.strategies.null import RandomSign
 from falsify.strategies.overlays import TurnoverBuffer, VolTarget
 from falsify.strategies.simple import ZOO, BuyAndHold, CausalZScore
 from falsify.synthetic import bars_from_close, gbm
+
+# B3: the engines take a ledger, always. In-memory and non-persisting here --
+# every invocation is still counted, which is what lets a test assert its own
+# search size, but the gate suite does not write to the shipped ledger.
+LEDGER = Ledger.memory()
 
 T_BARS = 512
 MASTER_SEED = 20140458
@@ -300,7 +306,9 @@ def test_a4_oracle_does_not_leak_and_has_no_edge(prices: Prices) -> None:
     for i in range(12):
         bars = bars_from_close(gbm(0.08, 0.20, 1000, np.random.default_rng(7_000 + i)))
         for strat, bucket in ((A4LeakyOracle(), oracle_sr), (BuyAndHold(), hold_sr)):
-            result = run_vectorized(bars, strat, ZERO_COST, 10_000.0, "close_to_close")
+            result = run_vectorized(
+                bars, strat, ZERO_COST, 10_000.0, "close_to_close", ledger=LEDGER
+            )
             bucket.append(annualise_sharpe(sharpe(result.net_ret[1:])))
 
     mean_oracle = float(np.mean(oracle_sr))

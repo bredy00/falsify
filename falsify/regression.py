@@ -113,7 +113,7 @@ class BivariateFit:
     def describe(self) -> str:
         return (
             f"n={self.n}  beta_yx={self.beta_yx:+.6f}  beta_xy={self.beta_xy:+.6f}  "
-            f"rho={self.rho:+.6f}  rho^2={self.rho ** 2:.6f}  "
+            f"rho={self.rho:+.6f}  rho^2={self.rho**2:.6f}  "
             f"identity_err={self.rho_squared_identity_error():.2e}"
         )
 

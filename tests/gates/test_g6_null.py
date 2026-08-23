@@ -36,6 +36,7 @@ from falsify.core.types import BARS_PER_YEAR, Bars
 from falsify.core.vectorized import run_vectorized
 from falsify.costs import ZERO_COST, CostModel
 from falsify.deflated import deflated_sharpe, empirical_p_value, psr
+from falsify.ledger import Ledger
 from falsify.metrics import annualise_sharpe, sharpe
 from falsify.strategies.null import (
     RandomSign,
@@ -47,6 +48,11 @@ from falsify.strategies.null import (
 )
 from falsify.strategies.simple import CausalZScore
 from falsify.synthetic import ar1, bars_from_close
+
+# B3: the engines take a ledger, always. In-memory and non-persisting here --
+# every invocation is still counted, which is what lets a test assert its own
+# search size, but the gate suite does not write to the shipped ledger.
+LEDGER = Ledger.memory()
 
 N_BARS = 1000
 N_NULLS = 1000  # PLAYBOOK G6 specifies a thousand
@@ -71,7 +77,7 @@ def bars() -> Bars:
 @pytest.fixture(scope="module")
 def target(bars: Bars) -> TurnoverSpec:
     """What the null must imitate, measured off the strategy's own run."""
-    reference = run_vectorized(bars, REFERENCE, ZERO_COST, CAPITAL, CONVENTION)
+    reference = run_vectorized(bars, REFERENCE, ZERO_COST, CAPITAL, CONVENTION, ledger=LEDGER)
     return spec_from_result(reference.turnover, reference.weights)
 
 
@@ -88,7 +94,7 @@ def null_ensemble(bars: Bars, target: TurnoverSpec) -> dict[str, NDArray[np.floa
 
     for i in range(N_NULLS):
         null = RandomSign(len(bars), np.random.default_rng(NULL_SEED_BASE + i), p, target.exposure)
-        result = run_vectorized(bars, null, ZERO_COST, CAPITAL, CONVENTION)
+        result = run_vectorized(bars, null, ZERO_COST, CAPITAL, CONVENTION, ledger=LEDGER)
         net = result.net_ret[1:]
         per_bar = sharpe(net)
         per_obs.append(per_bar)
@@ -170,8 +176,8 @@ def test_g6_an_unmatched_null_is_visibly_different(bars: Bars, target: TurnoverS
     )
     costs = CostModel(commission_bps=20.0)
 
-    naive_run = run_vectorized(bars, naive, costs, CAPITAL, CONVENTION)
-    matched_run = run_vectorized(bars, matched, costs, CAPITAL, CONVENTION)
+    naive_run = run_vectorized(bars, naive, costs, CAPITAL, CONVENTION, ledger=LEDGER)
+    matched_run = run_vectorized(bars, matched, costs, CAPITAL, CONVENTION, ledger=LEDGER)
     naive_to = realised_turnover_annual(naive_run.turnover)
     matched_to = realised_turnover_annual(matched_run.turnover)
 
@@ -447,7 +453,7 @@ def test_g6_reference_strategy_is_judged_against_the_empirical_null(
     """
     null_sharpes = null_ensemble["sharpe_annual"]
     for label, costs in (("0 bps", ZERO_COST), ("20 bps", CostModel(commission_bps=20.0))):
-        result = run_vectorized(bars, REFERENCE, costs, CAPITAL, CONVENTION)
+        result = run_vectorized(bars, REFERENCE, costs, CAPITAL, CONVENTION, ledger=LEDGER)
         observed = annualise_sharpe(sharpe(result.net_ret[1:]))
         p_value = empirical_p_value(observed, null_sharpes)
         quantile = float(np.mean(null_sharpes < observed))

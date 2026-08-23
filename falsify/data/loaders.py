@@ -163,9 +163,7 @@ def _download(spec: FetchSpec) -> tuple[pd.DataFrame, str]:
     try:
         import yfinance
     except ImportError as exc:  # pragma: no cover - depends on the install group
-        raise DataUnavailable(
-            "yfinance is not installed; run `uv sync --group data`"
-        ) from exc
+        raise DataUnavailable("yfinance is not installed; run `uv sync --group data`") from exc
 
     frame: pd.DataFrame = yfinance.download(
         spec.ticker,

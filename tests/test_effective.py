@@ -29,8 +29,14 @@ from falsify.effective import (
     trial_correlation,
 )
 from falsify.evaluation import build_grid
+from falsify.ledger import Ledger
 from falsify.strategies.simple import MACrossover
 from falsify.synthetic import bars_from_close, gbm
+
+# B3: the engines take a ledger, always. In-memory and non-persisting here --
+# every invocation is still counted, which is what lets a test assert its own
+# search size, but the gate suite does not write to the shipped ledger.
+LEDGER = Ledger.memory()
 
 T = 1_000
 
@@ -103,7 +109,7 @@ def test_a_parameter_lattice_contains_far_fewer_bets_than_configurations() -> No
     """
     bars = bars_from_close(gbm(mu=0.08, sigma=0.20, n_bars=2_500, rng=np.random.default_rng(4)))
     strategies = [MACrossover(f, s) for f in range(5, 35, 5) for s in range(40, 130, 10) if f < s]
-    grid = build_grid(bars, strategies, ZERO_COST)
+    grid = build_grid(bars, strategies, ZERO_COST, ledger=LEDGER)
     e = effective_trials(grid.returns)
     print(e.describe())
 
@@ -126,8 +132,8 @@ def test_adding_configurations_to_a_lattice_adds_almost_no_independent_informati
     coarse = [MACrossover(f, s) for f in (5, 10, 20, 30) for s in (40, 60, 90, 120) if f < s]
     dense = [MACrossover(f, s) for f in range(5, 35, 5) for s in range(40, 130, 10) if f < s]
 
-    c = effective_trials(build_grid(bars, coarse, ZERO_COST).returns)
-    d = effective_trials(build_grid(bars, dense, ZERO_COST).returns)
+    c = effective_trials(build_grid(bars, coarse, ZERO_COST, ledger=LEDGER).returns)
+    d = effective_trials(build_grid(bars, dense, ZERO_COST, ledger=LEDGER).returns)
     print(f"coarse N={c.n_raw} N_eff={c.n_eff:.2f}  ->  dense N={d.n_raw} N_eff={d.n_eff:.2f}")
 
     assert d.n_raw > 2 * c.n_raw, "the two lattices are not different enough to compare"

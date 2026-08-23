@@ -50,20 +50,22 @@ The τ-test also catches classes of leakage that no amount of shifting fixes: a 
 ### A4. Reference implementation
 
 ```python
-def causality_cut_test(pipeline, prices: np.ndarray, taus: list[int],
-                       rng, n_seeds: int = 20) -> None:
+def causality_cut_test(
+    pipeline, prices: np.ndarray, taus: list[int], rng, n_seeds: int = 20
+) -> None:
     """G1. Raises AssertionError on any leakage."""
-    baseline = pipeline(prices)                       # full-pipeline signals
+    baseline = pipeline(prices)  # full-pipeline signals
     for tau in taus:
         for _ in range(n_seeds):
             scrambled = prices.copy()
             # replace the future with noise of matching scale
             tail = len(prices) - tau - 1
             shocks = rng.normal(0.0, np.diff(np.log(prices)).std(), size=tail)
-            scrambled[tau + 1:] = prices[tau] * np.exp(np.cumsum(shocks))
+            scrambled[tau + 1 :] = prices[tau] * np.exp(np.cumsum(shocks))
             out = pipeline(scrambled)
-            assert np.array_equal(out[:tau + 1], baseline[:tau + 1], equal_nan=True), \
+            assert np.array_equal(out[: tau + 1], baseline[: tau + 1], equal_nan=True), (
                 f"causality violated at tau={tau}"
+            )
 ```
 
 **Test parameters:** 500 values of `τ` sampled uniformly over `[L, T)`, 20 seeds each. `equal_nan=True` because warm-up `NaN`s are legitimate and must also be stable.
@@ -73,9 +75,11 @@ def causality_cut_test(pipeline, prices: np.ndarray, taus: list[int],
 ```python
 class LeakyOracle(Strategy):
     """Trades on close[t] at close[t]. MUST be caught by G1."""
+
     lookback = 1
+
     def signals(self, close):
-        return np.sign(np.diff(close, prepend=close[0]))   # uses close[t]
+        return np.sign(np.diff(close, prepend=close[0]))  # uses close[t]
 ```
 
 If `causality_cut_test` does not raise on `LeakyOracle`, the harness itself is broken. This is the test of the test, and CI fails if it doesn't fire.
@@ -89,14 +93,16 @@ from dataclasses import dataclass
 from typing import Literal
 import numpy as np
 
+
 @dataclass(frozen=True, slots=True)
 class Bars:
     """Immutable OHLCV. Index is a monotonic, unique, tz-aware DatetimeIndex."""
-    ts:     np.ndarray   # datetime64[ns, UTC], strictly increasing
-    open:   np.ndarray
-    high:   np.ndarray
-    low:    np.ndarray
-    close:  np.ndarray
+
+    ts: np.ndarray  # datetime64[ns, UTC], strictly increasing
+    open: np.ndarray
+    high: np.ndarray
+    low: np.ndarray
+    close: np.ndarray
     volume: np.ndarray
     adjustment: Literal["raw", "split", "total_return"]
 
@@ -107,14 +113,15 @@ class Bars:
         assert np.all(np.diff(self.ts) > np.timedelta64(0)), "ts not strictly increasing"
         assert not np.isnan(self.close).any(), "NaN in close; fix upstream, do not fill here"
 
+
 @dataclass(frozen=True, slots=True)
 class Result:
-    equity:     np.ndarray   # portfolio value, equity[0] == initial_capital
-    weights:    np.ndarray   # target weight per bar, in [-1, 1] for single asset
-    gross_ret:  np.ndarray
-    net_ret:    np.ndarray
-    costs:      np.ndarray   # currency units per bar
-    turnover:   np.ndarray   # |Δw| per bar
+    equity: np.ndarray  # portfolio value, equity[0] == initial_capital
+    weights: np.ndarray  # target weight per bar, in [-1, 1] for single asset
+    gross_ret: np.ndarray
+    net_ret: np.ndarray
+    costs: np.ndarray  # currency units per bar
+    turnover: np.ndarray  # |Δw| per bar
 ```
 
 `frozen=True` is load-bearing. The reference repo mutates `self.df` in place across a dozen assignments, which means the object's meaning depends on how far through the method you are. Frozen dataclasses make the twin-engine comparison meaningful, because there is exactly one state to compare.
@@ -125,7 +132,7 @@ class Result:
 
 ```python
 class Strategy(ABC):
-    lookback: int          # bars of history required before the first valid signal
+    lookback: int  # bars of history required before the first valid signal
 
     @abstractmethod
     def signals(self, bars: Bars) -> np.ndarray:
@@ -212,13 +219,15 @@ bench[t] = bench[t−1] · (1 + r[t]),    bench[t_0] = initial_capital
 ### F1. Event engine — the reference
 
 ```python
-def run_event(bars: Bars, strategy: Strategy, costs: CostModel,
-              initial_capital: float, convention: str) -> Result:
+def run_event(
+    bars: Bars, strategy: Strategy, costs: CostModel, initial_capital: float, convention: str
+) -> Result:
     n = len(bars.close)
-    equity = np.full(n, np.nan); equity[strategy.lookback] = initial_capital
+    equity = np.full(n, np.nan)
+    equity[strategy.lookback] = initial_capital
     w_prev = 0.0
     for t in range(strategy.lookback + 1, n):
-        window = bars.slice(t - strategy.lookback, t)   # hard slice: no future access
+        window = bars.slice(t - strategy.lookback, t)  # hard slice: no future access
         w = strategy.signal_at(window)
         # ... apply Part E equations, one bar at a time
     return Result(...)

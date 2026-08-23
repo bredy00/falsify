@@ -24,10 +24,16 @@ from falsify.analysis import CostSweep, sweep_costs
 from falsify.core.types import Bars
 from falsify.core.vectorized import run_vectorized
 from falsify.costs import CostModel
+from falsify.ledger import Ledger
 from falsify.metrics import annualise_sharpe, sharpe
 from falsify.strategies.base import Strategy
 from falsify.strategies.simple import BuyAndHold, CausalZScore, MACrossover
 from falsify.synthetic import ar1, bars_from_close, gbm
+
+# B3: the engines take a ledger, always. In-memory and non-persisting here --
+# every invocation is still counted, which is what lets a test assert its own
+# search size, but the gate suite does not write to the shipped ledger.
+LEDGER = Ledger.memory()
 
 CAPITAL = 10_000.0
 SEED = 5_050
@@ -46,7 +52,7 @@ def trending_bars() -> Bars:
 
 @pytest.fixture(scope="module")
 def sweep(trending_bars: Bars) -> CostSweep:
-    return sweep_costs(trending_bars, CausalZScore(20), GRID, CAPITAL, "next_open")
+    return sweep_costs(trending_bars, CausalZScore(20), GRID, CAPITAL, "next_open", ledger=LEDGER)
 
 
 # ------------------------------------------------------------------- the gate
@@ -85,6 +91,7 @@ def test_g5_break_even_cost_is_finite_and_reported(sweep: CostSweep, trending_ba
         CostModel(commission_bps=c_star * 0.5),
         CAPITAL,
         "next_open",
+        ledger=LEDGER,
     )
     above = run_vectorized(
         trending_bars,
@@ -92,6 +99,7 @@ def test_g5_break_even_cost_is_finite_and_reported(sweep: CostSweep, trending_ba
         CostModel(commission_bps=c_star * 1.5),
         CAPITAL,
         "next_open",
+        ledger=LEDGER,
     )
     sr_below = annualise_sharpe(sharpe(below.net_ret[1:]))
     sr_above = annualise_sharpe(sharpe(above.net_ret[1:]))
@@ -109,7 +117,7 @@ def test_g5_zero_turnover_is_indifferent_to_cost() -> None:
     across the whole sweep. If it moves, cost is being charged on something other
     than traded notional -- which is the reference repo's mistake."""
     bars = bars_from_close(gbm(0.08, 0.20, 800, np.random.default_rng(SEED + 1)))
-    flat = sweep_costs(bars, BuyAndHold(), GRID, CAPITAL, "next_open")
+    flat = sweep_costs(bars, BuyAndHold(), GRID, CAPITAL, "next_open", ledger=LEDGER)
     spread = float(np.ptp(flat.sharpe_annual))
     print(f"buy-and-hold SR spread across 0-100 bps: {spread:.3e}")
     assert spread == 0.0, (
@@ -122,7 +130,7 @@ def test_g5_zero_turnover_is_indifferent_to_cost() -> None:
 @pytest.mark.parametrize("strategy", [MACrossover(5, 15), CausalZScore(20)], ids=lambda s: s.name)
 def test_g5_monotone_across_the_zoo(strategy: Strategy, trending_bars: Bars) -> None:
     """Monotonicity is a property of the accounting, not of one strategy."""
-    result = sweep_costs(trending_bars, strategy, GRID, CAPITAL, "next_open")
+    result = sweep_costs(trending_bars, strategy, GRID, CAPITAL, "next_open", ledger=LEDGER)
     assert result.is_monotone(), f"{strategy.name} broke monotonicity"
 
 
@@ -130,8 +138,8 @@ def test_g5_higher_turnover_dies_sooner(trending_bars: Bars) -> None:
     """A faster strategy must have a lower break-even cost. This is the diagnostic
     the number exists for: it makes the cost of turnover legible instead of
     implicit."""
-    fast = sweep_costs(trending_bars, CausalZScore(5), GRID, CAPITAL, "next_open")
-    slow = sweep_costs(trending_bars, CausalZScore(60), GRID, CAPITAL, "next_open")
+    fast = sweep_costs(trending_bars, CausalZScore(5), GRID, CAPITAL, "next_open", ledger=LEDGER)
+    slow = sweep_costs(trending_bars, CausalZScore(60), GRID, CAPITAL, "next_open", ledger=LEDGER)
     fast_c, slow_c = fast.break_even_bps(), slow.break_even_bps()
     print(
         f"turnover {fast.turnover_annual:6.2f}/yr -> c* = {fast_c:6.2f} bps\n"
@@ -154,14 +162,19 @@ def test_g5_sweep_rejects_a_malformed_grid(trending_bars: Bars) -> None:
         ([5.0, 5.0], "strictly increasing"),
     ):
         with pytest.raises(ValueError, match=match):
-            sweep_costs(trending_bars, BuyAndHold(), grid, CAPITAL, "next_open")
+            sweep_costs(trending_bars, BuyAndHold(), grid, CAPITAL, "next_open", ledger=LEDGER)
 
 
 def test_g5_break_even_is_nan_when_the_grid_never_crosses(trending_bars: Bars) -> None:
     """Honest "not determined here" rather than a number invented by
     extrapolation (F7 for the break-even calculation itself)."""
     narrow = sweep_costs(
-        trending_bars, CausalZScore(20), np.linspace(0.0, 0.5, 6), CAPITAL, "next_open"
+        trending_bars,
+        CausalZScore(20),
+        np.linspace(0.0, 0.5, 6),
+        CAPITAL,
+        "next_open",
+        ledger=LEDGER,
     )
     print(f"c* over a 0-0.5 bps grid: {narrow.break_even_bps()}")
     assert math.isnan(narrow.break_even_bps()), (

@@ -16,8 +16,8 @@ Credit where due — the shift-by-one is correct, friction is modelled at all, a
 **1. The benchmark curve is wrong.** In `run_moving_average_crossover`:
 
 ```python
-self.df['cum_market_return']   = (1 + self.df['daily_return']).cumprod()
-self.df['cum_strategy_return'] = (1 + self.df['net_strategy_return']).cumprod()
+self.df["cum_market_return"] = (1 + self.df["daily_return"]).cumprod()
+self.df["cum_strategy_return"] = (1 + self.df["net_strategy_return"]).cumprod()
 self.df = self.df.dropna()
 ```
 
@@ -195,11 +195,11 @@ Also decide and document: **when do you trade?** Signal computed on close of `t`
 ```python
 @dataclass(frozen=True)
 class CostModel:
-    commission_bps: float      # per side
-    half_spread_bps: float     # per side
-    slippage_bps: float        # per side, or a function of participation rate
-    borrow_bps_annual: float   # short financing
-    cash_yield_annual: float   # what idle cash earns — the reference repo drops this
+    commission_bps: float  # per side
+    half_spread_bps: float  # per side
+    slippage_bps: float  # per side, or a function of participation rate
+    borrow_bps_annual: float  # short financing
+    cash_yield_annual: float  # what idle cash earns — the reference repo drops this
 ```
 
 - [ ] Costs charged on **traded notional**: `cost_t = |Δw_t| · V_t · total_bps`, not on portfolio return
@@ -236,7 +236,7 @@ def stationary_bootstrap(x: np.ndarray, p: float, n_boot: int, rng) -> np.ndarra
         idx = np.empty(T, dtype=np.int64)
         idx[0] = rng.integers(T)
         for t in range(1, T):
-            idx[t] = rng.integers(T) if rng.random() < p else (idx[t-1] + 1) % T
+            idx[t] = rng.integers(T) if rng.random() < p else (idx[t - 1] + 1) % T
         out[b] = x[idx]
     return out
 ```

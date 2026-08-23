@@ -20,11 +20,17 @@ import pytest
 from falsify.core.types import Bars
 from falsify.core.vectorized import run_vectorized
 from falsify.costs import ZERO_COST, CostModel
+from falsify.ledger import Ledger
 from falsify.metrics import annualise_sharpe, sharpe
 from falsify.strategies.null import realised_exposure, realised_turnover_annual
 from falsify.strategies.overlays import TurnoverBuffer, VolTarget, simple_returns
 from falsify.strategies.simple import BuyAndHold, CausalZScore
 from falsify.synthetic import ar1, bars_from_close, gbm
+
+# B3: the engines take a ledger, always. In-memory and non-persisting here --
+# every invocation is still counted, which is what lets a test assert its own
+# search size, but the gate suite does not write to the shipped ledger.
+LEDGER = Ledger.memory()
 
 CAPITAL = 10_000.0
 SEED = 7_070
@@ -42,8 +48,10 @@ def bars() -> Bars:
 def test_buffer_never_increases_turnover(band: float, bars: Bars) -> None:
     """A band can only suppress trades, never create them."""
     base = CausalZScore(20)
-    plain = run_vectorized(bars, base, ZERO_COST, CAPITAL, "next_open")
-    buffered = run_vectorized(bars, TurnoverBuffer(base, band), ZERO_COST, CAPITAL, "next_open")
+    plain = run_vectorized(bars, base, ZERO_COST, CAPITAL, "next_open", ledger=LEDGER)
+    buffered = run_vectorized(
+        bars, TurnoverBuffer(base, band), ZERO_COST, CAPITAL, "next_open", ledger=LEDGER
+    )
     plain_to = realised_turnover_annual(plain.turnover)
     buffered_to = realised_turnover_annual(buffered.turnover)
     print(f"band={band:.2f}: turnover {plain_to:.2f} -> {buffered_to:.2f}/yr")
@@ -57,7 +65,7 @@ def test_buffer_turnover_decreases_monotonically_with_the_band(bars: Bars) -> No
     turnovers = [
         realised_turnover_annual(
             run_vectorized(
-                bars, TurnoverBuffer(base, band), ZERO_COST, CAPITAL, "next_open"
+                bars, TurnoverBuffer(base, band), ZERO_COST, CAPITAL, "next_open", ledger=LEDGER
             ).turnover
         )
         for band in (0.0, 0.1, 0.25, 0.5, 0.75)
@@ -69,8 +77,10 @@ def test_buffer_turnover_decreases_monotonically_with_the_band(bars: Bars) -> No
 def test_buffer_with_zero_band_is_a_no_op(bars: Bars) -> None:
     """band = 0 means "trade on any change", which is the base strategy exactly."""
     base = CausalZScore(20)
-    plain = run_vectorized(bars, base, ZERO_COST, CAPITAL, "next_open")
-    zero = run_vectorized(bars, TurnoverBuffer(base, 0.0), ZERO_COST, CAPITAL, "next_open")
+    plain = run_vectorized(bars, base, ZERO_COST, CAPITAL, "next_open", ledger=LEDGER)
+    zero = run_vectorized(
+        bars, TurnoverBuffer(base, 0.0), ZERO_COST, CAPITAL, "next_open", ledger=LEDGER
+    )
     assert np.array_equal(plain.weights, zero.weights)
     assert np.array_equal(plain.equity, zero.equity)
 
@@ -109,7 +119,7 @@ def test_vol_target_scales_exposure_toward_the_target(bars: Bars) -> None:
     exposures = [
         realised_exposure(
             run_vectorized(
-                bars, VolTarget(base, target, 60), ZERO_COST, CAPITAL, "next_open"
+                bars, VolTarget(base, target, 60), ZERO_COST, CAPITAL, "next_open", ledger=LEDGER
             ).weights
         )
         for target in (0.05, 0.10, 0.20, 0.40)
@@ -174,18 +184,24 @@ def test_overlays_improve_net_sharpe_at_realistic_cost(bars: Bars) -> None:
     costs = CostModel(commission_bps=20.0)
 
     base_gross = annualise_sharpe(
-        sharpe(run_vectorized(bars, base, ZERO_COST, CAPITAL, "next_open").net_ret[1:])
+        sharpe(
+            run_vectorized(bars, base, ZERO_COST, CAPITAL, "next_open", ledger=LEDGER).net_ret[1:]
+        )
     )
     base_net = annualise_sharpe(
-        sharpe(run_vectorized(bars, base, costs, CAPITAL, "next_open").net_ret[1:])
+        sharpe(run_vectorized(bars, base, costs, CAPITAL, "next_open", ledger=LEDGER).net_ret[1:])
     )
-    over_run = run_vectorized(bars, composed, costs, CAPITAL, "next_open")
+    over_run = run_vectorized(bars, composed, costs, CAPITAL, "next_open", ledger=LEDGER)
     over_gross = annualise_sharpe(
-        sharpe(run_vectorized(bars, composed, ZERO_COST, CAPITAL, "next_open").net_ret[1:])
+        sharpe(
+            run_vectorized(bars, composed, ZERO_COST, CAPITAL, "next_open", ledger=LEDGER).net_ret[
+                1:
+            ]
+        )
     )
     over_net = annualise_sharpe(sharpe(over_run.net_ret[1:]))
     base_to = realised_turnover_annual(
-        run_vectorized(bars, base, ZERO_COST, CAPITAL, "next_open").turnover
+        run_vectorized(bars, base, ZERO_COST, CAPITAL, "next_open", ledger=LEDGER).turnover
     )
     over_to = realised_turnover_annual(over_run.turnover)
 

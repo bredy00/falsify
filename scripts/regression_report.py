@@ -41,9 +41,7 @@ def git(*args: str) -> str:
 
 
 def fit_rows(panels: list[Panel]) -> list[list[Any]]:
-    rows: list[list[Any]] = [
-        ["Panel", "β yx", "β xy", "ρ", "ρ²", "|Δ| identity", "angle", "n"]
-    ]
+    rows: list[list[Any]] = [["Panel", "β yx", "β xy", "ρ", "ρ²", "|Δ| identity", "angle", "n"]]
     for panel in panels:
         f = panel.fit
         rows.append(
@@ -52,7 +50,7 @@ def fit_rows(panels: list[Panel]) -> list[list[Any]]:
                 p(f"{f.beta_yx:+.4f}", S.cell_mono),
                 p(f"{f.beta_xy:+.4f}", S.cell_mono),
                 p(f"{f.rho:+.4f}", S.cell_mono),
-                p(f"{f.rho ** 2:.4f}", S.cell_mono),
+                p(f"{f.rho**2:.4f}", S.cell_mono),
                 p(f"{f.rho_squared_identity_error():.1e}", S.cell_mono),
                 p(f"{f.angle_between_lines_degrees():.1f}°", S.cell_mono),
                 p(f"{f.n:,}", S.cell_mono),
@@ -86,12 +84,18 @@ def story(synthetic: list[Panel], pipeline: list[Panel]) -> list[Any]:
                 [
                     p("<b>β<sub>yx</sub></b>", S.cell),
                     p("cov(X,Y) / var(X)", S.cell_mono),
-                    p("Given x, predict y. Minimises <i>vertical</i> error. The original line.", S.cell),
+                    p(
+                        "Given x, predict y. Minimises <i>vertical</i> error. The original line.",
+                        S.cell,
+                    ),
                 ],
                 [
                     p("<b>β<sub>xy</sub></b>", S.cell),
                     p("cov(X,Y) / var(Y)", S.cell_mono),
-                    p("Given y, predict x. Minimises <i>horizontal</i> error. A different line.", S.cell),
+                    p(
+                        "Given y, predict x. Minimises <i>horizontal</i> error. A different line.",
+                        S.cell,
+                    ),
                 ],
                 [
                     p("<b>ρ</b>", S.cell),
@@ -129,14 +133,16 @@ def story(synthetic: list[Panel], pipeline: list[Panel]) -> list[Any]:
 
     out += [
         p("Measured", S.h2),
-        table(fit_rows(synthetic + pipeline), [46 * mm, 19 * mm, 19 * mm, 17 * mm, 17 * mm, 24 * mm, 16 * mm, 16 * mm]),
+        table(
+            fit_rows(synthetic + pipeline),
+            [46 * mm, 19 * mm, 19 * mm, 17 * mm, 17 * mm, 24 * mm, 16 * mm, 16 * mm],
+        ),
         Spacer(1, 5),
         p(
             "Top three rows are session 1's synthetic construction, unchanged. Bottom three are "
             "the same three regimes measured through the built pipeline.",
             S.small,
         ),
-
         p("What the second line reveals", S.h2),
         p(
             "<b>1. The identity holds everywhere.</b> |Δ| ranges from 0.0e+00 to 1.7e-16 across "
@@ -178,7 +184,6 @@ def story(synthetic: list[Panel], pipeline: list[Panel]) -> list[Any]:
             "a limitation of the comparison rather than a finding — worth remembering before "
             "reading much into the exact values there.",
         ),
-
         p("On numerical methods", S.h2),
         p(
             "Nothing here uses an iterative or approximate numerical method: every quantity is a "
@@ -215,8 +220,15 @@ def main() -> int:
         bottomMargin=18 * mm,
     )
     frame = Frame(
-        doc.leftMargin, doc.bottomMargin, doc.width, doc.height, id="body",
-        leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0,
+        doc.leftMargin,
+        doc.bottomMargin,
+        doc.width,
+        doc.height,
+        id="body",
+        leftPadding=0,
+        rightPadding=0,
+        topPadding=0,
+        bottomPadding=0,
     )
     doc.addPageTemplates([PageTemplate(id="main", frames=[frame], onPage=on_page)])
     doc.build(story(synthetic, pipeline))

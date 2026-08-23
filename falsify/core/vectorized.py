@@ -33,8 +33,10 @@ from falsify.core.conventions import (
     signal_lag,
 )
 from falsify.core.event import warmup_start
+from falsify.core.trial import record_trial
 from falsify.core.types import BARS_PER_YEAR, Bars, InsufficientHistory, Result
 from falsify.costs import CostModel
+from falsify.ledger import Ledger
 from falsify.strategies.base import Strategy
 
 
@@ -44,6 +46,8 @@ def run_vectorized(
     costs: CostModel,
     initial_capital: float,
     convention: Convention = DEFAULT_CONVENTION,
+    *,
+    ledger: Ledger,
 ) -> Result:
     """Array implementation of the Part E equations."""
     if initial_capital <= 0.0:
@@ -109,7 +113,7 @@ def run_vectorized(
         cost_paid[k] = charge
         net_ret[k] = equity[k] / prev - 1.0
 
-    return Result(
+    outcome = Result(
         equity=equity,
         weights=weights,
         gross_ret=gross_ret,
@@ -117,3 +121,7 @@ def run_vectorized(
         costs=cost_paid,
         turnover=turnover,
     )
+    # B3 rule 1: every engine invocation writes a row. Unconditional, at the single
+    # point of return, so there is no path out of this function that skips it.
+    record_trial(bars, strategy, costs, outcome, ledger)
+    return outcome

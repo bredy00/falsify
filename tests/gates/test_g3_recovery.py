@@ -44,6 +44,7 @@ from scipy.stats import linregress, norm
 from falsify.core.event import run_event
 from falsify.core.vectorized import run_vectorized
 from falsify.costs import ZERO_COST
+from falsify.ledger import Ledger
 from falsify.metrics import (
     annualise_sharpe,
     annualised_vol,
@@ -59,6 +60,11 @@ from falsify.metrics import (
 )
 from falsify.strategies.simple import BuyAndHold, CausalZScore
 from falsify.synthetic import ar1, bars_from_close, gbm, half_life
+
+# B3: the engines take a ledger, always. In-memory and non-persisting here --
+# every invocation is still counted, which is what lets a test assert its own
+# search size, but the gate suite does not write to the shipped ledger.
+LEDGER = Ledger.memory()
 
 MU = 0.08
 SIGMA = 0.20
@@ -96,7 +102,9 @@ def ensemble() -> dict[str, NDArray[np.float64]]:
     for i in range(PATHS):
         prices = gbm(MU, SIGMA, BARS, np.random.default_rng(MASTER_SEED + i))
         bars = bars_from_close(prices)
-        result = run_vectorized(bars, BuyAndHold(), ZERO_COST, CAPITAL, "close_to_close")
+        result = run_vectorized(
+            bars, BuyAndHold(), ZERO_COST, CAPITAL, "close_to_close", ledger=LEDGER
+        )
 
         net = result.net_ret[1:]  # index 0 is the anchor bar, it earns nothing
         simple_sr.append(annualise_sharpe(sharpe(net)))
@@ -250,7 +258,7 @@ def test_g3_holds_for_the_event_engine_too() -> None:
     sr = []
     for i in range(25):
         bars = bars_from_close(gbm(MU, SIGMA, 400, np.random.default_rng(MASTER_SEED + 900 + i)))
-        result = run_event(bars, BuyAndHold(), ZERO_COST, CAPITAL, "close_to_close")
+        result = run_event(bars, BuyAndHold(), ZERO_COST, CAPITAL, "close_to_close", ledger=LEDGER)
         sr.append(annualise_sharpe(sharpe(result.net_ret[1:])))
     mean, se = mean_se(np.asarray(sr))
     print(f"event engine SR:  {mean:+.4f} +/- {se:.4f}  target {TRUE_SIMPLE_SR:+.4f}")
@@ -318,7 +326,9 @@ def test_gate_03_finds_edge_that_exists_and_none_that_does_not() -> None:
             ar1(phi, 0.02, n_bars, np.random.default_rng(MASTER_SEED + 3_000 + i))
         )
         for bars, bucket in ((flat, gbm_sr), (mean_reverting, ar1_sr)):
-            result = run_vectorized(bars, strategy, ZERO_COST, CAPITAL, "close_to_close")
+            result = run_vectorized(
+                bars, strategy, ZERO_COST, CAPITAL, "close_to_close", ledger=LEDGER
+            )
             bucket.append(annualise_sharpe(sharpe(result.net_ret[1:])))
 
     gbm_mean, gbm_se = mean_se(np.asarray(gbm_sr))
@@ -409,7 +419,7 @@ def test_summarise_reports_a_sharpe_with_its_error_bar() -> None:
     """B2 is structural here: `Performance` cannot be built without the SE, so a
     bare Sharpe cannot leave the metrics layer."""
     bars = bars_from_close(gbm(MU, SIGMA, 1200, np.random.default_rng(99)))
-    result = run_vectorized(bars, BuyAndHold(), ZERO_COST, CAPITAL, "close_to_close")
+    result = run_vectorized(bars, BuyAndHold(), ZERO_COST, CAPITAL, "close_to_close", ledger=LEDGER)
     window_ts = bars.ts[len(bars) - len(result) :]
     perf = summarise(result.net_ret[1:], result.equity, result.weights, elapsed_years(window_ts))
     print(perf.describe())

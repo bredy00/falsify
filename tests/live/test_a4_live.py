@@ -29,9 +29,15 @@ from falsify.core.types import Bars
 from falsify.core.vectorized import run_vectorized
 from falsify.costs import ZERO_COST, CostModel
 from falsify.data.loaders import DEFAULT_CACHE, DEFAULT_MANIFEST, FetchSpec, load
+from falsify.ledger import Ledger
 from falsify.metrics import annualise_sharpe, sharpe
 from falsify.strategies.base import Strategy
 from falsify.strategies.simple import BuyAndHold, CausalZScore, MACrossover
+
+# B3: the engines take a ledger, always. In-memory and non-persisting here --
+# every invocation is still counted, which is what lets a test assert its own
+# search size, but the gate suite does not write to the shipped ledger.
+LEDGER = Ledger.memory()
 
 pytestmark = pytest.mark.live
 
@@ -73,7 +79,7 @@ def spy() -> Bars:
 
 
 def annual_sharpe(bars: Bars, strategy: Strategy, costs: CostModel) -> float:
-    result = run_vectorized(bars, strategy, costs, CAPITAL, "close_to_close")
+    result = run_vectorized(bars, strategy, costs, CAPITAL, "close_to_close", ledger=LEDGER)
     return annualise_sharpe(sharpe(result.net_ret[1:]))
 
 
@@ -116,7 +122,9 @@ def test_costs_punish_the_a4_strategy_for_its_turnover(spy: Bars) -> None:
     """It flips on almost every bar -- 257 turns a year -- so cost, not signal,
     dominates its result. Exactly the failure G6's turnover matching exists to stop
     a null from inheriting."""
-    result = run_vectorized(spy, A4LeakyOracle(), ZERO_COST, CAPITAL, "close_to_close")
+    result = run_vectorized(
+        spy, A4LeakyOracle(), ZERO_COST, CAPITAL, "close_to_close", ledger=LEDGER
+    )
     turnover = float(np.sum(result.turnover) / len(result) * 252)
     print(f"A4 turnover: {turnover:.1f}/yr")
     assert turnover > 200.0, "the premise is that this strategy trades constantly"

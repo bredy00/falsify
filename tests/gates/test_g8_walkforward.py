@@ -27,6 +27,7 @@ from falsify.evaluation import (
     selection_degradation_slope,
     walk_forward_select,
 )
+from falsify.ledger import Ledger
 from falsify.selection import ArgMax, EqualWeight, SelectionRule, Softmax, TopK
 from falsify.strategies.base import Strategy
 from falsify.strategies.overlays import TurnoverBuffer, VolTarget
@@ -41,6 +42,11 @@ from falsify.walkforward import (
     WalkForwardSplitter,
     purge_and_embargo,
 )
+
+# B3: the engines take a ledger, always. In-memory and non-persisting here --
+# every invocation is still counted, which is what lets a test assert its own
+# search size, but the gate suite does not write to the shipped ledger.
+LEDGER = Ledger.memory()
 
 N_OBS = 600
 SEED = 8_080
@@ -303,7 +309,7 @@ def grid(bars: Bars) -> StrategyGrid:
         VolTarget(base, 0.15, 60),
         TurnoverBuffer(VolTarget(base, 0.15, 60), 0.25),
     ]
-    return build_grid(bars, strategies, CostModel(commission_bps=10.0))
+    return build_grid(bars, strategies, CostModel(commission_bps=10.0), ledger=LEDGER)
 
 
 def test_g8_grid_is_aligned_and_finite(grid: StrategyGrid) -> None:
@@ -466,7 +472,7 @@ def test_g8_softmax_temperature_moves_between_argmax_and_equal_weight(
 
 def test_g8_grid_rejects_malformed_input(bars: Bars) -> None:
     with pytest.raises(ValueError, match="at least one configuration"):
-        build_grid(bars, [], ZERO_COST)
+        build_grid(bars, [], ZERO_COST, ledger=LEDGER)
     with pytest.raises(ValueError, match="expected a"):
         StrategyGrid(returns=np.zeros(5), names=("a",), first_bar=0)
     with pytest.raises(ValueError, match="columns but"):
@@ -492,7 +498,7 @@ def test_g8_holds_on_a_memoryless_process() -> None:
     """
     bars = bars_from_close(gbm(0.0, 0.20, 1200, np.random.default_rng(SEED + 1)))
     strategies: list[Strategy] = [CausalZScore(w) for w in (10, 20, 40, 80)]
-    grid = build_grid(bars, strategies, CostModel(commission_bps=10.0))
+    grid = build_grid(bars, strategies, CostModel(commission_bps=10.0), ledger=LEDGER)
     splitter = ExpandingWindow(n_splits=6, test_size=80, min_train=200, purge=10)
     result = walk_forward_select(grid, splitter, ArgMax())
 

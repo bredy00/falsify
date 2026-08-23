@@ -17,8 +17,8 @@ import pytest
 # Guards against catastrophic silent loss, not against ordinary churn: set below
 # the current count so adding or removing a few tests needs no edit, but losing a
 # whole file fails loudly. Raise it as the suite grows.
-# 410 selected at the reporting contract (live tests are deselected in CI, not skipped).
-DEFAULT_MIN_COLLECTED = 390
+# 420 selected at the B3 ledger (live tests are deselected in CI, not skipped).
+DEFAULT_MIN_COLLECTED = 400
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:

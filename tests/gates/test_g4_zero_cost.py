@@ -25,9 +25,15 @@ from falsify.core.event import benchmark_equity, run_event, warmup_start
 from falsify.core.types import Bars
 from falsify.core.vectorized import run_vectorized
 from falsify.costs import ZERO_COST, CostModel
+from falsify.ledger import Ledger
 from falsify.strategies.base import Strategy
 from falsify.strategies.simple import BuyAndHold, Flat
 from falsify.synthetic import bars_from_close, gbm
+
+# B3: the engines take a ledger, always. In-memory and non-persisting here --
+# every invocation is still counted, which is what lets a test assert its own
+# search size, but the gate suite does not write to the shipped ledger.
+LEDGER = Ledger.memory()
 
 CAPITAL = 10_000.0
 SEED = 4_040
@@ -70,7 +76,7 @@ def test_g4_zero_cost_buy_and_hold_is_exactly_buy_and_hold(
     engine: object, convention: Convention, bars: Bars
 ) -> None:
     """The gate. Exact float equality, both engines, all three conventions."""
-    result = engine(bars, BuyAndHold(), ZERO_COST, CAPITAL, convention)  # type: ignore[operator]
+    result = engine(bars, BuyAndHold(), ZERO_COST, CAPITAL, convention, ledger=LEDGER)  # type: ignore[operator]
     bench = benchmark_equity(bars, BuyAndHold().lookback, CAPITAL, convention)
 
     assert len(bench) == len(result)
@@ -87,7 +93,7 @@ def test_g4_no_cost_is_charged_when_the_model_is_zero(engine: object, bars: Bars
     """Turnover still happens; the charge must not."""
     from falsify.strategies.simple import MACrossover
 
-    result = engine(bars, MACrossover(5, 15), ZERO_COST, CAPITAL, "next_open")  # type: ignore[operator]
+    result = engine(bars, MACrossover(5, 15), ZERO_COST, CAPITAL, "next_open", ledger=LEDGER)  # type: ignore[operator]
     assert np.all(result.costs == 0.0), "a zero cost model charged something"
     assert np.sum(result.turnover) > 0.0, "the test is vacuous if nothing traded"
 
@@ -106,7 +112,7 @@ def test_g4_no_cost_is_charged_when_the_model_is_zero(engine: object, bars: Bars
 def test_g4_flat_position_at_zero_cost_and_zero_yield_is_flat(engine: object, bars: Bars) -> None:
     """Weight zero, no cash yield: equity must not move by a single bit. Catches a
     cash term that leaks in when it should be switched off."""
-    result = engine(bars, Flat(), ZERO_COST, CAPITAL, "next_open")  # type: ignore[operator]
+    result = engine(bars, Flat(), ZERO_COST, CAPITAL, "next_open", ledger=LEDGER)  # type: ignore[operator]
     assert np.all(result.equity == CAPITAL), "flat equity moved"
     assert np.all(result.gross_ret == 0.0)
     assert np.all(result.net_ret == 0.0)
@@ -140,7 +146,7 @@ def test_g4_constant_weight_compounds_exactly_one_plus_w_times_r(
     reveal, because 1 is a fixed point of most of those mistakes.
     """
     strategy = ConstantWeight(weight)
-    result = engine(bars, strategy, ZERO_COST, CAPITAL, convention)  # type: ignore[operator]
+    result = engine(bars, strategy, ZERO_COST, CAPITAL, convention, ledger=LEDGER)  # type: ignore[operator]
 
     price = fill_prices(bars, convention)
     start = warmup_start(strategy.lookback, signal_lag(convention))
@@ -169,8 +175,8 @@ def test_g4_both_engines_agree_on_the_weight_array_itself(weight: float, bars: B
     """
     strategy = ConstantWeight(weight)
     for convention in CONVENTIONS:
-        a = run_event(bars, strategy, ZERO_COST, CAPITAL, convention)
-        b = run_vectorized(bars, strategy, ZERO_COST, CAPITAL, convention)
+        a = run_event(bars, strategy, ZERO_COST, CAPITAL, convention, ledger=LEDGER)
+        b = run_vectorized(bars, strategy, ZERO_COST, CAPITAL, convention, ledger=LEDGER)
         assert np.array_equal(a.weights, b.weights), f"weights differ under {convention}"
         assert len(a.weights) == len(b.weights) == len(a.equity)
 
@@ -188,13 +194,27 @@ def test_g4_short_position_pays_borrow_and_earns_no_cash() -> None:
     per_bar = borrow_bps / 10_000.0 / 252.0
 
     short = run_vectorized(
-        bars, ConstantWeight(-1.0), CostModel(borrow_bps_annual=borrow_bps), CAPITAL, "next_open"
+        bars,
+        ConstantWeight(-1.0),
+        CostModel(borrow_bps_annual=borrow_bps),
+        CAPITAL,
+        "next_open",
+        ledger=LEDGER,
     )
-    short_free = run_vectorized(bars, ConstantWeight(-1.0), ZERO_COST, CAPITAL, "next_open")
+    short_free = run_vectorized(
+        bars, ConstantWeight(-1.0), ZERO_COST, CAPITAL, "next_open", ledger=LEDGER
+    )
     long_paid = run_vectorized(
-        bars, ConstantWeight(1.0), CostModel(borrow_bps_annual=borrow_bps), CAPITAL, "next_open"
+        bars,
+        ConstantWeight(1.0),
+        CostModel(borrow_bps_annual=borrow_bps),
+        CAPITAL,
+        "next_open",
+        ledger=LEDGER,
     )
-    long_free = run_vectorized(bars, ConstantWeight(1.0), ZERO_COST, CAPITAL, "next_open")
+    long_free = run_vectorized(
+        bars, ConstantWeight(1.0), ZERO_COST, CAPITAL, "next_open", ledger=LEDGER
+    )
 
     drag = short_free.gross_ret[1:] - short.gross_ret[1:]
     print(f"borrow drag per bar: {np.mean(drag):.10f}  expected {per_bar:.10f}")
@@ -209,7 +229,7 @@ def test_g4_fires_when_a_phantom_cost_is_introduced(bars: Bars) -> None:
     to break exact equality, which is the point of demanding exactness."""
     bench = benchmark_equity(bars, BuyAndHold().lookback, CAPITAL, "next_open")
     nearly_free = run_vectorized(
-        bars, BuyAndHold(), CostModel(commission_bps=1.0), CAPITAL, "next_open"
+        bars, BuyAndHold(), CostModel(commission_bps=1.0), CAPITAL, "next_open", ledger=LEDGER
     )
     # Buy-and-hold never trades after the anchor, so even a cost model changes
     # nothing -- which is itself worth asserting.
@@ -219,9 +239,11 @@ def test_g4_fires_when_a_phantom_cost_is_introduced(bars: Bars) -> None:
 
     from falsify.strategies.simple import MACrossover
 
-    traded_free = run_vectorized(bars, MACrossover(5, 15), ZERO_COST, CAPITAL, "next_open")
+    traded_free = run_vectorized(
+        bars, MACrossover(5, 15), ZERO_COST, CAPITAL, "next_open", ledger=LEDGER
+    )
     traded_paid = run_vectorized(
-        bars, MACrossover(5, 15), CostModel(commission_bps=1.0), CAPITAL, "next_open"
+        bars, MACrossover(5, 15), CostModel(commission_bps=1.0), CAPITAL, "next_open", ledger=LEDGER
     )
     assert not np.array_equal(traded_free.equity, traded_paid.equity), (
         "a strategy that trades must be affected by a 1 bps cost, or the cost model "

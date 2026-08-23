@@ -19,6 +19,7 @@ from falsify.core.conventions import DEFAULT_CONVENTION, Convention
 from falsify.core.types import BARS_PER_YEAR, Bars
 from falsify.core.vectorized import run_vectorized
 from falsify.costs import CostModel
+from falsify.ledger import Ledger
 from falsify.metrics import annualise_sharpe, sharpe
 from falsify.strategies.base import Strategy
 
@@ -68,6 +69,8 @@ def sweep_costs(
     initial_capital: float = 10_000.0,
     convention: Convention = DEFAULT_CONVENTION,
     base: CostModel | None = None,
+    *,
+    ledger: Ledger,
 ) -> CostSweep:
     """Run the strategy at each cost level and record annualised net Sharpe.
 
@@ -91,7 +94,7 @@ def sweep_costs(
             borrow_bps_annual=template.borrow_bps_annual,
             cash_yield_annual=template.cash_yield_annual,
         )
-        result = run_vectorized(bars, strategy, costs, initial_capital, convention)
+        result = run_vectorized(bars, strategy, costs, initial_capital, convention, ledger=ledger)
         sharpes[i] = annualise_sharpe(sharpe(result.net_ret[1:]))
         if i == 0:
             turnover_annual = float(np.sum(result.turnover) / len(result) * BARS_PER_YEAR)

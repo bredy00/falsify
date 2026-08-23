@@ -29,6 +29,7 @@ from falsify.core.conventions import CONVENTIONS
 from falsify.core.event import benchmark_equity, run_event
 from falsify.core.vectorized import run_vectorized
 from falsify.costs import ZERO_COST, CostModel
+from falsify.ledger import Ledger
 from falsify.metrics import (
     annualise_sharpe,
     annualised_vol,
@@ -40,6 +41,11 @@ from falsify.metrics import (
 from falsify.strategies.base import Strategy
 from falsify.strategies.simple import BuyAndHold, CausalZScore, Flat, MACrossover
 from falsify.synthetic import ar1, bars_from_close, gbm
+
+# B3: the engines take a ledger, always. In-memory and non-persisting here --
+# every invocation is still counted, which is what lets a test assert its own
+# search size, but the gate suite does not write to the shipped ledger.
+LEDGER = Ledger.memory()
 
 CAPITAL = 10_000.0
 G2_TOLERANCE = 1e-12
@@ -62,7 +68,9 @@ COST_MODELS = (
     CostModel(commission_bps=7.0, half_spread_bps=3.0, slippage_bps=1.5),
     CostModel(commission_bps=40.0, cash_yield_annual=0.05, borrow_bps_annual=200.0),
     CostModel(
-        commission_bps=250.0, half_spread_bps=90.0, cash_yield_annual=0.11,
+        commission_bps=250.0,
+        half_spread_bps=90.0,
+        cash_yield_annual=0.11,
         borrow_bps_annual=900.0,
     ),
 )
@@ -103,8 +111,10 @@ def check_g2() -> tuple[bool, str]:
                         continue
                     for convention in CONVENTIONS:
                         for costs in COST_MODELS:
-                            a = run_event(bars, strategy, costs, CAPITAL, convention)
-                            b = run_vectorized(bars, strategy, costs, CAPITAL, convention)
+                            a = run_event(bars, strategy, costs, CAPITAL, convention, ledger=LEDGER)
+                            b = run_vectorized(
+                                bars, strategy, costs, CAPITAL, convention, ledger=LEDGER
+                            )
                             runs += 1
                             for field in RESULT_FIELDS:
                                 dev = relative_deviation(getattr(a, field), getattr(b, field))
@@ -138,7 +148,9 @@ def check_g4() -> tuple[bool, str]:
                 for convention in CONVENTIONS:
                     bench = benchmark_equity(bars, BuyAndHold().lookback, CAPITAL, convention)
                     for engine in (run_event, run_vectorized):
-                        result = engine(bars, BuyAndHold(), ZERO_COST, CAPITAL, convention)
+                        result = engine(
+                            bars, BuyAndHold(), ZERO_COST, CAPITAL, convention, ledger=LEDGER
+                        )
                         checked += 1
                         if not np.array_equal(result.equity, bench):
                             broken += 1
@@ -146,8 +158,7 @@ def check_g4() -> tuple[bool, str]:
                             if dev > worst:
                                 worst = dev
                                 where = (
-                                    f"{name} T={length} seed={seed} {convention} "
-                                    f"{engine.__name__}"
+                                    f"{name} T={length} seed={seed} {convention} {engine.__name__}"
                                 )
 
     print(f"combinations: {checked}   not bitwise identical: {broken}")
@@ -170,7 +181,12 @@ def check_g3(paths: int = 800) -> tuple[bool, str]:
     for i in range(paths):
         prices = gbm(mu, sigma, bars_count, np.random.default_rng(50_000 + i))
         result = run_vectorized(
-            bars_from_close(prices), BuyAndHold(), ZERO_COST, CAPITAL, "close_to_close"
+            bars_from_close(prices),
+            BuyAndHold(),
+            ZERO_COST,
+            CAPITAL,
+            "close_to_close",
+            ledger=LEDGER,
         )
         net = result.net_ret[1:]
         simple.append(annualise_sharpe(sharpe(net)))
@@ -219,7 +235,7 @@ def check_g5() -> tuple[bool, str]:
     for seed in (5_050, 5_051, 5_052):
         bars = bars_from_close(ar1(0.95, 0.02, 1200, np.random.default_rng(seed)))
         for strategy in (CausalZScore(5), CausalZScore(20), CausalZScore(60), MACrossover(5, 15)):
-            result = sweep_costs(bars, strategy, grid, CAPITAL, "next_open")
+            result = sweep_costs(bars, strategy, grid, CAPITAL, "next_open", ledger=LEDGER)
             rows += 1
             monotone = result.is_monotone()
             violations += 0 if monotone else 1
@@ -237,7 +253,7 @@ def check_invariants() -> tuple[bool, str]:
     problems: list[str] = []
 
     bars = bars_from_close(gbm(0.08, 0.20, 200, np.random.default_rng(1)))
-    result = run_vectorized(bars, BuyAndHold(), ZERO_COST, CAPITAL, "next_open")
+    result = run_vectorized(bars, BuyAndHold(), ZERO_COST, CAPITAL, "next_open", ledger=LEDGER)
 
     # B7 -- frozen dataclasses, no in-place mutation.
     for obj, field in ((bars, "close"), (result, "equity")):
@@ -269,11 +285,14 @@ def check_invariants() -> tuple[bool, str]:
     from scipy.stats import kurtosis
 
     sample = np.random.default_rng(3).standard_t(5, size=2000)
-    if abs(
-        float(kurtosis(sample, fisher=False, bias=False))
-        - float(kurtosis(sample, fisher=True, bias=False))
-        - 3.0
-    ) > 1e-9:
+    if (
+        abs(
+            float(kurtosis(sample, fisher=False, bias=False))
+            - float(kurtosis(sample, fisher=True, bias=False))
+            - 3.0
+        )
+        > 1e-9
+    ):
         problems.append("B10: kurtosis conventions do not differ by 3")
     print("  B10 non-excess kurtosis available:   ok")
 

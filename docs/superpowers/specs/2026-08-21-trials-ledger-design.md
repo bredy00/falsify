@@ -52,23 +52,23 @@ Nothing is removed from the Part C record.
 
 ```python
 class Recording(Enum):
-    TRIALS = "trials"   # persist one row per distinct content address (default)
-    ALL    = "all"      # persist every observation, duplicates included
-    NONE   = "none"     # observe and count, persist nothing
+    TRIALS = "trials"  # persist one row per distinct content address (default)
+    ALL = "all"  # persist every observation, duplicates included
+    NONE = "none"  # observe and count, persist nothing
 
 
-@dataclass(frozen=True, slots=True)          # B7
+@dataclass(frozen=True, slots=True)  # B7
 class TrialRecord:
-    trial_id: str                # sha256(canonical)[:16]
-    timestamp: str               # ISO 8601 UTC; provenance, NOT part of the id
-    git_sha: str                 # "<sha>" or "<sha>-dirty"
+    trial_id: str  # sha256(canonical)[:16]
+    timestamp: str  # ISO 8601 UTC; provenance, NOT part of the id
+    git_sha: str  # "<sha>" or "<sha>-dirty"
     data_manifest_hash: str
     strategy: str
-    params: dict[str, object]    # JSON scalars only
+    params: dict[str, object]  # JSON scalars only
     universe: tuple[str, ...]
     date_range: tuple[str, str]
     cost_bps: float
-    sharpe: float                # annualised, per the reporting boundary (B8)
+    sharpe: float  # annualised, per the reporting boundary (B8)
     sharpe_se: float
     n_obs: int
     recording: str

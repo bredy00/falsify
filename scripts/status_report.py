@@ -80,38 +80,83 @@ class Styles:
 def build_styles() -> Styles:
     base = getSampleStyleSheet()["BodyText"]
     body = ParagraphStyle(
-        "body", parent=base, fontName="Times-Roman", fontSize=9.6, leading=13.4,
-        textColor=INK, alignment=TA_LEFT, spaceAfter=5,
+        "body",
+        parent=base,
+        fontName="Times-Roman",
+        fontSize=9.6,
+        leading=13.4,
+        textColor=INK,
+        alignment=TA_LEFT,
+        spaceAfter=5,
     )
     return Styles(
         h1=ParagraphStyle(
-            "h1", parent=body, fontName="Times-Bold", fontSize=21, leading=24,
-            textColor=INK, spaceAfter=2,
+            "h1",
+            parent=body,
+            fontName="Times-Bold",
+            fontSize=21,
+            leading=24,
+            textColor=INK,
+            spaceAfter=2,
         ),
         h2=ParagraphStyle(
-            "h2", parent=body, fontName="Times-Bold", fontSize=13, leading=16,
-            textColor=SLATE, spaceBefore=13, spaceAfter=5,
+            "h2",
+            parent=body,
+            fontName="Times-Bold",
+            fontSize=13,
+            leading=16,
+            textColor=SLATE,
+            spaceBefore=13,
+            spaceAfter=5,
         ),
         h3=ParagraphStyle(
-            "h3", parent=body, fontName="Helvetica-Bold", fontSize=7.6, leading=10,
-            textColor=GREY, spaceBefore=8, spaceAfter=3,
+            "h3",
+            parent=body,
+            fontName="Helvetica-Bold",
+            fontSize=7.6,
+            leading=10,
+            textColor=GREY,
+            spaceBefore=8,
+            spaceAfter=3,
         ),
         body=body,
         lede=ParagraphStyle(
-            "lede", parent=body, fontSize=10.6, leading=14.6, textColor=INK, spaceAfter=7,
+            "lede",
+            parent=body,
+            fontSize=10.6,
+            leading=14.6,
+            textColor=INK,
+            spaceAfter=7,
         ),
         small=ParagraphStyle(
-            "small", parent=body, fontName="Helvetica", fontSize=7.4, leading=10,
+            "small",
+            parent=body,
+            fontName="Helvetica",
+            fontSize=7.4,
+            leading=10,
             textColor=GREY,
         ),
         mono=ParagraphStyle(
-            "mono", parent=body, fontName="Courier", fontSize=8, leading=11, textColor=INK,
+            "mono",
+            parent=body,
+            fontName="Courier",
+            fontSize=8,
+            leading=11,
+            textColor=INK,
         ),
         cell=ParagraphStyle(
-            "cell", parent=body, fontSize=8.4, leading=11, spaceAfter=0,
+            "cell",
+            parent=body,
+            fontSize=8.4,
+            leading=11,
+            spaceAfter=0,
         ),
         cell_mono=ParagraphStyle(
-            "cellmono", parent=body, fontName="Courier", fontSize=7.8, leading=10.6,
+            "cellmono",
+            parent=body,
+            fontName="Courier",
+            fontSize=7.8,
+            leading=10.6,
             spaceAfter=0,
         ),
     )
@@ -169,9 +214,7 @@ def on_page(canvas: Any, doc: Any) -> None:
     canvas.setFont("Helvetica", 6.8)
     canvas.setFillColor(GREY)
     canvas.drawString(18 * mm, h - 11.6 * mm, "FALSIFY  ·  STATUS REPORT")
-    canvas.drawRightString(
-        w - 18 * mm, h - 11.6 * mm, f"{REPORT_DATE.isoformat()}  ·  through G8"
-    )
+    canvas.drawRightString(w - 18 * mm, h - 11.6 * mm, f"{REPORT_DATE.isoformat()}  ·  through G8")
     canvas.line(18 * mm, 14 * mm, w - 18 * mm, 14 * mm)
     canvas.drawString(18 * mm, 10 * mm, "github.com/bredy00/falsify  (private)")
     canvas.drawRightString(w - 18 * mm, 10 * mm, f"page {doc.page}")
@@ -315,55 +358,68 @@ def story() -> list[Any]:
             [
                 ["Gate", "Statement", "Status", "Evidence"],
                 [
-                    p("0.0", S.cell), p("Reproduce the propositions first", S.cell),
+                    p("0.0", S.cell),
+                    p("Reproduce the propositions first", S.cell),
                     status_chip("green"),
                     p("E[max z] to 0.58 SE; Prop 3 slope −0.9989 ± 0.0014", S.cell),
                 ],
                 [
-                    p("G1", S.cell), p("Causality: scramble future, past bit-identical", S.cell),
+                    p("G1", S.cell),
+                    p("Causality: scramble future, past bit-identical", S.cell),
                     status_chip("green"),
                     p("500 cuts × 20 seeds per strategy, 3 strategies", S.cell),
                 ],
                 [
-                    p("G2", S.cell), p("Twin engines agree to 1e-12", S.cell),
+                    p("G2", S.cell),
+                    p("Twin engines agree to 1e-12", S.cell),
                     status_chip("green"),
                     p("0.000e+00 across zoo × 3 conventions × cost sweep", S.cell),
                 ],
                 [
-                    p("G3", S.cell), p("Analytic recovery on synthetic GBM", S.cell),
+                    p("G3", S.cell),
+                    p("Analytic recovery on synthetic GBM", S.cell),
                     status_chip("green"),
                     p("both Sharpe conventions, vol, drift; 1/sqrt(M); power test", S.cell),
                 ],
                 [
-                    p("G4", S.cell), p("Zero-cost identity", S.cell),
+                    p("G4", S.cell),
+                    p("Zero-cost identity", S.cell),
                     status_chip("green"),
                     p("bitwise, both engines, all three conventions", S.cell),
                 ],
                 [
-                    p("G5", S.cell), p("Cost monotonicity, break-even cost", S.cell),
+                    p("G5", S.cell),
+                    p("Cost monotonicity, break-even cost", S.cell),
                     status_chip("green"),
                     p("monotone 0-100 bps; c* = 27.03 bps per turn", S.cell),
                 ],
                 [
-                    p("G6", S.cell), p("Null calibration, 1,000 coin flips", S.cell),
-                    status_chip("not started"), p("next; first gate needing the data layer", S.cell),
+                    p("G6", S.cell),
+                    p("Null calibration, 1,000 coin flips", S.cell),
+                    status_chip("not started"),
+                    p("next; first gate needing the data layer", S.cell),
                 ],
                 [
-                    p("G7", S.cell), p("Leakage trap must fire", S.cell),
+                    p("G7", S.cell),
+                    p("Leakage trap must fire", S.cell),
                     status_chip("green"),
                     p("5 traps rejected; A4 oracle case ruled on", S.cell),
                 ],
                 [
-                    p("G8", S.cell), p("Purged, embargoed walk-forward", S.cell),
-                    status_chip("not started"), p("deferrable per 03 Part C", S.cell),
+                    p("G8", S.cell),
+                    p("Purged, embargoed walk-forward", S.cell),
+                    status_chip("not started"),
+                    p("deferrable per 03 Part C", S.cell),
                 ],
                 [
-                    p("G9", S.cell), p("PBO via CSCV", S.cell),
+                    p("G9", S.cell),
+                    p("PBO via CSCV", S.cell),
                     status_chip("partial"),
                     p("SelectionRule interface built first, by design", S.cell),
                 ],
                 [
-                    p("G10", S.cell), p("Reproducibility from pinned hashes", S.cell),
+                    p("G10", S.cell),
+                    p("Reproducibility from pinned hashes", S.cell),
                     status_chip("partial"),
                     p("figure bytes + numeric output stable across runs", S.cell),
                 ],
@@ -429,42 +485,50 @@ def story() -> list[Any]:
                 [
                     p("Simple-return Sharpe, 200 paths", S.cell),
                     p("+0.37513 +/- 0.02358", S.cell_mono),
-                    p("mu/sigma = 0.40", S.cell_mono), p("1.05 SE", S.cell),
+                    p("mu/sigma = 0.40", S.cell_mono),
+                    p("1.05 SE", S.cell),
                 ],
                 [
                     p("Log-return Sharpe, 200 paths", S.cell),
                     p("+0.27461 +/- 0.02364", S.cell_mono),
-                    p("(mu-s^2/2)/sigma = 0.30", S.cell_mono), p("1.07 SE", S.cell),
+                    p("(mu-s^2/2)/sigma = 0.30", S.cell_mono),
+                    p("1.07 SE", S.cell),
                 ],
                 [
                     p("Annualised volatility", S.cell),
                     p("0.20018 +/- 0.00020", S.cell_mono),
-                    p("sigma = 0.20", S.cell_mono), p("0.09% rel", S.cell),
+                    p("sigma = 0.20", S.cell_mono),
+                    p("0.09% rel", S.cell),
                 ],
                 [
                     p("Annualised log drift", S.cell),
                     p("+0.05502 +/- 0.00474", S.cell_mono),
-                    p("mu - s^2/2 = 0.06", S.cell_mono), p("1.05 SE", S.cell),
+                    p("mu - s^2/2 = 0.06", S.cell_mono),
+                    p("1.05 SE", S.cell),
                 ],
                 [
                     p("Monte Carlo SE scaling", S.cell),
                     p("slope -0.5173, r^2 = 0.997", S.cell_mono),
-                    p("-0.5 exactly", S.cell_mono), p("confirms 1/sqrt(M)", S.cell),
+                    p("-0.5 exactly", S.cell_mono),
+                    p("confirms 1/sqrt(M)", S.cell),
                 ],
                 [
                     p("Mean reversion on GBM", S.cell),
                     p("+0.0051 +/- 0.0738", S.cell_mono),
-                    p("0 -- no edge exists", S.cell_mono), p("invents none", S.cell),
+                    p("0 -- no edge exists", S.cell_mono),
+                    p("invents none", S.cell),
                 ],
                 [
                     p("Mean reversion on AR(1), phi=0.95", S.cell),
                     p("+1.1534 +/- 0.0703", S.cell_mono),
-                    p("> 0 -- edge exists", S.cell_mono), p("16 SE, finds it", S.cell),
+                    p("> 0 -- edge exists", S.cell_mono),
+                    p("16 SE, finds it", S.cell),
                 ],
                 [
                     p("<b>Break-even cost c*</b>", S.cell),
                     p("<b>27.03 bps / turn</b>", S.cell_mono),
-                    p("at 68.8 turns/yr", S.cell_mono), p("+0.35 SR at c*/2", S.cell),
+                    p("at 68.8 turns/yr", S.cell_mono),
+                    p("+0.35 SR at c*/2", S.cell),
                 ],
             ],
             [50 * mm, 44 * mm, 44 * mm, 36 * mm],
@@ -654,10 +718,14 @@ def story() -> list[Any]:
                 ["N", "2", "3", "5", "10", "50", "100", "1,000", "10⁶"],
                 [
                     p("<b>Error in SR₀</b>", S.cell),
-                    p("−7.88%", S.cell_mono), p("+0.77%", S.cell_mono),
-                    p("+2.55%", S.cell_mono), p("+2.33%", S.cell_mono),
-                    p("+1.21%", S.cell_mono), p("+0.92%", S.cell_mono),
-                    p("+0.42%", S.cell_mono), p("+0.10%", S.cell_mono),
+                    p("−7.88%", S.cell_mono),
+                    p("+0.77%", S.cell_mono),
+                    p("+2.55%", S.cell_mono),
+                    p("+2.33%", S.cell_mono),
+                    p("+1.21%", S.cell_mono),
+                    p("+0.92%", S.cell_mono),
+                    p("+0.42%", S.cell_mono),
+                    p("+0.10%", S.cell_mono),
                 ],
             ],
             [30 * mm, 18 * mm, 18 * mm, 18 * mm, 18 * mm, 18 * mm, 18 * mm, 18 * mm, 18 * mm],
@@ -677,26 +745,56 @@ def story() -> list[Any]:
         table(
             [
                 ["Module", "Role", "Tests"],
-                [p("falsify/core/causality.py", S.cell_mono),
-                 p("G1 harness, two cut modes", S.cell), p("14", S.cell)],
-                [p("falsify/core/event.py", S.cell_mono),
-                 p("Reference engine — hard-sliced prefixes, O(T²)", S.cell), p("33", S.cell)],
-                [p("falsify/core/vectorized.py", S.cell_mono),
-                 p("Product engine — rolling ops, exact equity loop", S.cell), p("(shared)", S.cell)],
-                [p("falsify/core/types.py", S.cell_mono),
-                 p("Bars, Result, slice, InsufficientHistory — all frozen", S.cell), p("(shared)", S.cell)],
-                [p("falsify/core/conventions.py", S.cell_mono),
-                 p("Part D's three conventions as (price, lag)", S.cell), p("(shared)", S.cell)],
-                [p("falsify/costs.py", S.cell_mono),
-                 p("Commission, spread, slippage, borrow, cash yield", S.cell), p("(shared)", S.cell)],
-                [p("falsify/selection.py", S.cell_mono),
-                 p("ArgMax, Softmax, EqualWeight, TopK", S.cell), p("52", S.cell)],
-                [p("falsify/strategies/base.py", S.cell_mono),
-                 p("Strategy ABC — target weights, never orders (B4)", S.cell), p("(shared)", S.cell)],
-                [p("tests/gates/test_prop.py", S.cell_mono),
-                 p("Gate 0.0 — Experiments A, B, C + the figure", S.cell), p("14", S.cell)],
-                [p("scripts/check_action_refs.py", S.cell_mono),
-                 p("Resolves every workflow uses: ref", S.cell), p("4", S.cell)],
+                [
+                    p("falsify/core/causality.py", S.cell_mono),
+                    p("G1 harness, two cut modes", S.cell),
+                    p("14", S.cell),
+                ],
+                [
+                    p("falsify/core/event.py", S.cell_mono),
+                    p("Reference engine — hard-sliced prefixes, O(T²)", S.cell),
+                    p("33", S.cell),
+                ],
+                [
+                    p("falsify/core/vectorized.py", S.cell_mono),
+                    p("Product engine — rolling ops, exact equity loop", S.cell),
+                    p("(shared)", S.cell),
+                ],
+                [
+                    p("falsify/core/types.py", S.cell_mono),
+                    p("Bars, Result, slice, InsufficientHistory — all frozen", S.cell),
+                    p("(shared)", S.cell),
+                ],
+                [
+                    p("falsify/core/conventions.py", S.cell_mono),
+                    p("Part D's three conventions as (price, lag)", S.cell),
+                    p("(shared)", S.cell),
+                ],
+                [
+                    p("falsify/costs.py", S.cell_mono),
+                    p("Commission, spread, slippage, borrow, cash yield", S.cell),
+                    p("(shared)", S.cell),
+                ],
+                [
+                    p("falsify/selection.py", S.cell_mono),
+                    p("ArgMax, Softmax, EqualWeight, TopK", S.cell),
+                    p("52", S.cell),
+                ],
+                [
+                    p("falsify/strategies/base.py", S.cell_mono),
+                    p("Strategy ABC — target weights, never orders (B4)", S.cell),
+                    p("(shared)", S.cell),
+                ],
+                [
+                    p("tests/gates/test_prop.py", S.cell_mono),
+                    p("Gate 0.0 — Experiments A, B, C + the figure", S.cell),
+                    p("14", S.cell),
+                ],
+                [
+                    p("scripts/check_action_refs.py", S.cell_mono),
+                    p("Resolves every workflow uses: ref", S.cell),
+                    p("4", S.cell),
+                ],
             ],
             [52 * mm, 96 * mm, 26 * mm],
         ),
@@ -772,14 +870,17 @@ def story() -> list[Any]:
             "sampling error was never worked out. Measuring first is cheap; a gate that fails "
             "half the time for reasons unrelated to the code is not.",
         ),
-
         p("Suite performance", S.h2),
         table(
             [
                 ["", "before", "after"],
                 [p("tests", S.cell), p("225", S.cell_mono), p("<b>263</b>", S.cell_mono)],
                 [p("skipped", S.cell), p("4", S.cell_mono), p("<b>0</b>", S.cell_mono)],
-                [p("local runtime", S.cell), p("49.8 s", S.cell_mono), p("<b>28 s</b>", S.cell_mono)],
+                [
+                    p("local runtime", S.cell),
+                    p("49.8 s", S.cell_mono),
+                    p("<b>28 s</b>", S.cell_mono),
+                ],
                 [
                     p("CI total", S.cell),
                     p("55 s", S.cell_mono),
@@ -803,7 +904,6 @@ def story() -> list[Any]:
             "exactly when the way tests run changed. It now enforces controller-side and is "
             "verified firing in both serial and parallel.",
         ),
-
         p("Next -- G9, and the data layer", S.h2),
         p(
             "G9 is PBO via CSCV, and it is the hardest code in the project: 12,870 splits, "
@@ -846,8 +946,15 @@ def main() -> int:
         bottomMargin=18 * mm,
     )
     frame = Frame(
-        doc.leftMargin, doc.bottomMargin, doc.width, doc.height, id="body",
-        leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0,
+        doc.leftMargin,
+        doc.bottomMargin,
+        doc.width,
+        doc.height,
+        id="body",
+        leftPadding=0,
+        rightPadding=0,
+        topPadding=0,
+        bottomPadding=0,
     )
     doc.addPageTemplates([PageTemplate(id="main", frames=[frame], onPage=on_page)])
     doc.build(story())

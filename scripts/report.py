@@ -24,10 +24,16 @@ from falsify.core.vectorized import run_vectorized
 from falsify.costs import ZERO_COST
 from falsify.cscv import cscv
 from falsify.evaluation import build_grid
+from falsify.ledger import Ledger
 from falsify.reporting import build_report, write_metrics
 from falsify.selection import ArgMax
 from falsify.strategies.simple import MACrossover
 from falsify.synthetic import bars_from_close, gbm
+
+# B3: the engines take a ledger, always. In-memory and non-persisting here --
+# every invocation is still counted, which is what lets a test assert its own
+# search size, but the gate suite does not write to the shipped ledger.
+LEDGER = Ledger.memory()
 
 OUTPUT = Path("outputs/metrics.json")
 MANIFEST = Path("data/MANIFEST.json")
@@ -46,13 +52,13 @@ def main() -> int:
     # The full search, so `n_trials_raw` counts what was actually evaluated rather than
     # what was kept. B3's ledger will widen this to every run; today it is this run.
     strategies = [MACrossover(f, s) for f in range(5, 35, 5) for s in range(40, 130, 10) if f < s]
-    grid = build_grid(bars, strategies, ZERO_COST)
+    grid = build_grid(bars, strategies, ZERO_COST, ledger=LEDGER)
 
-    result = run_vectorized(bars, CHOSEN, ZERO_COST, 10_000.0, "next_open")
+    result = run_vectorized(bars, CHOSEN, ZERO_COST, 10_000.0, "next_open", ledger=LEDGER)
     returns = result.net_ret[max(CHOSEN.lookback + 2, 130) :]
 
     pbo = cscv(grid.returns, ArgMax(), n_blocks=BLOCKS).pbo()
-    sweep = sweep_costs(bars, CHOSEN, COST_GRID)
+    sweep = sweep_costs(bars, CHOSEN, COST_GRID, ledger=LEDGER)
 
     report = build_report(
         bars,

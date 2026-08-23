@@ -27,8 +27,10 @@ from falsify.core.conventions import (
     fill_prices,
     signal_lag,
 )
+from falsify.core.trial import record_trial
 from falsify.core.types import BARS_PER_YEAR, Bars, InsufficientHistory, Result
 from falsify.costs import CostModel
+from falsify.ledger import Ledger
 from falsify.strategies.base import Strategy
 
 
@@ -49,6 +51,8 @@ def run_event(
     costs: CostModel,
     initial_capital: float,
     convention: Convention = DEFAULT_CONVENTION,
+    *,
+    ledger: Ledger,
 ) -> Result:
     """Bar-by-bar reference implementation of the Part E equations."""
     if initial_capital <= 0.0:
@@ -108,11 +112,7 @@ def run_event(
 
         # Part E, gross return: exposure, plus yield on the unallocated
         # fraction, minus borrow on the short leg.
-        gross = (
-            w * r
-            + (1.0 - abs(w)) * cash_per_bar
-            - max(-w, 0.0) * borrow_per_bar
-        )
+        gross = w * r + (1.0 - abs(w)) * cash_per_bar - max(-w, 0.0) * borrow_per_bar
 
         # Part E, cost on traded notional -- not on portfolio return.
         traded = abs(w - w_prev)
@@ -128,7 +128,7 @@ def run_event(
         cost_paid[k] = charge
         net_ret[k] = equity[k] / equity[k - 1] - 1.0
 
-    return Result(
+    outcome = Result(
         equity=equity,
         weights=weights,
         gross_ret=gross_ret,
@@ -136,6 +136,9 @@ def run_event(
         costs=cost_paid,
         turnover=turnover,
     )
+    # B3 rule 1, and B5: the twin engines record identically or they are not twins.
+    record_trial(bars, strategy, costs, outcome, ledger)
+    return outcome
 
 
 def benchmark_equity(

@@ -34,6 +34,7 @@ from numpy.typing import NDArray
 
 from falsify.costs import CostModel
 from falsify.evaluation import build_grid, walk_forward_select
+from falsify.ledger import Ledger
 from falsify.regression import BivariateFit, fit_bivariate
 from falsify.selection import ArgMax
 from falsify.strategies.base import Strategy
@@ -41,6 +42,11 @@ from falsify.strategies.overlays import TurnoverBuffer, VolTarget
 from falsify.strategies.simple import CausalZScore, MACrossover
 from falsify.synthetic import ar1, bars_from_close, gbm
 from falsify.walkforward import ExpandingWindow
+
+# B3: the engines take a ledger, always. In-memory and non-persisting here --
+# every invocation is still counted, which is what lets a test assert its own
+# search size, but the gate suite does not write to the shipped ledger.
+LEDGER = Ledger.memory()
 
 REPO_ROOT = __import__("pathlib").Path(__file__).resolve().parents[1]
 FIGURE_PATH = REPO_ROOT / "docs" / "figures" / "regression_comparison.png"
@@ -64,10 +70,10 @@ class Panel:
 def sharpe_rows(returns: NDArray[np.float64]) -> tuple[Series, Series]:
     """Annualised in-sample and out-of-sample Sharpe for each row, split at the mid."""
     half = returns.shape[1] // 2
+
     def sr(block: NDArray[np.float64]) -> Series:
-        return np.asarray(
-            block.mean(axis=1) / block.std(axis=1, ddof=1) * ANN, dtype=np.float64
-        )
+        return np.asarray(block.mean(axis=1) / block.std(axis=1, ddof=1) * ANN, dtype=np.float64)
+
     return sr(returns[:, :half]), sr(returns[:, half:])
 
 
@@ -99,8 +105,13 @@ def synthetic_panels() -> list[Panel]:
         lvl[:, t + 1] = phi * lvl[:, t] + eps[:, t]
     x, y = sharpe_rows(np.diff(lvl, axis=1))
     out.append(
-        Panel("Stationary AR(1), φ = 0.995", "Proposition 5 — the winner reverts", x, y,
-              fit_bivariate(x, y))
+        Panel(
+            "Stationary AR(1), φ = 0.995",
+            "Proposition 5 — the winner reverts",
+            x,
+            y,
+            fit_bivariate(x, y),
+        )
     )
     return out
 
@@ -117,7 +128,7 @@ def engine_panel(title: str, subtitle: str, prices: Series, use_overlays: bool) 
             VolTarget(base, 0.15, 60),
             TurnoverBuffer(VolTarget(base, 0.15, 60), 0.25),
         ]
-    grid = build_grid(bars, strategies, CostModel(commission_bps=10.0))
+    grid = build_grid(bars, strategies, CostModel(commission_bps=10.0), ledger=LEDGER)
     splitter = ExpandingWindow(n_splits=10, test_size=80, min_train=200, purge=10)
     result = walk_forward_select(grid, splitter, ArgMax())
     x = result.config_is_sharpe.ravel()
@@ -166,14 +177,35 @@ def draw(panels: list[Panel]) -> None:
         ax.scatter(panel.x, panel.y, s=8, alpha=0.28, color=slate, linewidths=0, zorder=1)
 
         span = np.array([panel.x.min(), panel.x.max()])
-        ax.plot(span, f.line_yx(span), color=brick, lw=2.0, zorder=3,
-                label=f"Y on X:  β$_{{yx}}$ = {f.beta_yx:+.3f}")
+        ax.plot(
+            span,
+            f.line_yx(span),
+            color=brick,
+            lw=2.0,
+            zorder=3,
+            label=f"Y on X:  β$_{{yx}}$ = {f.beta_yx:+.3f}",
+        )
         line_xy = f.line_xy(span)
         if np.all(np.isfinite(line_xy)):
-            ax.plot(span, line_xy, color=amber, lw=2.0, ls="--", zorder=3,
-                    label=f"X on Y:  β$_{{xy}}$ = {f.beta_xy:+.3f}")
-        ax.scatter([f.mean_x], [f.mean_y], s=90, marker="+", color=moss, lw=2.2, zorder=4,
-                   label="centroid — both lines cross here")
+            ax.plot(
+                span,
+                line_xy,
+                color=amber,
+                lw=2.0,
+                ls="--",
+                zorder=3,
+                label=f"X on Y:  β$_{{xy}}$ = {f.beta_xy:+.3f}",
+            )
+        ax.scatter(
+            [f.mean_x],
+            [f.mean_y],
+            s=90,
+            marker="+",
+            color=moss,
+            lw=2.2,
+            zorder=4,
+            label="centroid — both lines cross here",
+        )
 
         # Clip to the scatter, not to the lines. When rho is near zero the X-on-Y line
         # is almost vertical, and letting it set the limits squashes the data into an
@@ -188,26 +220,35 @@ def draw(panels: list[Panel]) -> None:
         ax.legend(fontsize=7.6, loc="best", framealpha=0.92)
         ax.tick_params(labelsize=8)
         ax.text(
-            0.02, 0.02,
-            f"ρ = {f.rho:+.4f}    ρ² = {f.rho ** 2:.4f}\n"
+            0.02,
+            0.02,
+            f"ρ = {f.rho:+.4f}    ρ² = {f.rho**2:.4f}\n"
             f"β$_{{yx}}$·β$_{{xy}}$ = {f.beta_yx * f.beta_xy:.4f}   "
             f"|Δ| = {f.rho_squared_identity_error():.1e}\n"
             f"angle = {f.angle_between_lines_degrees():.1f}°   n = {f.n:,}",
-            transform=ax.transAxes, fontsize=7.4, va="bottom", ha="left", color=ink,
+            transform=ax.transAxes,
+            fontsize=7.4,
+            va="bottom",
+            ha="left",
+            color=ink,
             bbox={"boxstyle": "round,pad=0.4", "facecolor": "white", "edgecolor": "0.8"},
         )
 
     fig.suptitle(
         "Two regressions, one scatter — Gate 0.0's synthetic propositions (top) "
         "against the built pipeline (bottom)",
-        fontsize=13.5, color=ink,
+        fontsize=13.5,
+        color=ink,
     )
     fig.text(
-        0.5, 0.008,
+        0.5,
+        0.008,
         "β$_{yx}$ = cov/var(X) minimises vertical error; β$_{xy}$ = cov/var(Y) minimises "
         "horizontal error; ρ² = β$_{yx}$·β$_{xy}$ exactly. The two lines coincide only when "
         "ρ² = 1 and are perpendicular when ρ = 0.",
-        ha="center", fontsize=8.4, color="#5b6a79",
+        ha="center",
+        fontsize=8.4,
+        color="#5b6a79",
     )
     fig.tight_layout(rect=(0, 0.022, 1, 0.955))
     FIGURE_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -226,7 +267,7 @@ def main() -> int:
         f = p.fit
         print(
             f"{p.title:<34}{f.beta_yx:>+10.4f}{f.beta_xy:>+10.4f}{f.rho:>+9.4f}"
-            f"{f.rho ** 2:>9.4f}{f.rho_squared_identity_error():>10.1e}"
+            f"{f.rho**2:>9.4f}{f.rho_squared_identity_error():>10.1e}"
             f"{f.angle_between_lines_degrees():>7.1f}°{f.n:>8,}"
         )
     print(f"\nwrote {FIGURE_PATH.relative_to(REPO_ROOT)}")

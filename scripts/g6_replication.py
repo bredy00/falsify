@@ -28,6 +28,7 @@ from falsify.core.types import BARS_PER_YEAR
 from falsify.core.vectorized import run_vectorized
 from falsify.costs import ZERO_COST, CostModel
 from falsify.deflated import deflated_sharpe, empirical_p_value, psr
+from falsify.ledger import Ledger
 from falsify.metrics import annualise_sharpe, sharpe
 from falsify.strategies.null import (
     RandomSign,
@@ -38,6 +39,11 @@ from falsify.strategies.null import (
 )
 from falsify.strategies.simple import CausalZScore
 from falsify.synthetic import ar1, bars_from_close
+
+# B3: the engines take a ledger, always. In-memory and non-persisting here --
+# every invocation is still counted, which is what lets a test assert its own
+# search size, but the gate suite does not write to the shipped ledger.
+LEDGER = Ledger.memory()
 
 N_BARS = 1000
 N_NULLS = 1000
@@ -55,7 +61,7 @@ def replication(index: int) -> dict[str, float]:
     bars = bars_from_close(ar1(0.95, 0.02, N_BARS, np.random.default_rng(70_000 + index)))
     reference = CausalZScore(20)
 
-    ref_run = run_vectorized(bars, reference, ZERO_COST, CAPITAL, CONVENTION)
+    ref_run = run_vectorized(bars, reference, ZERO_COST, CAPITAL, CONVENTION, ledger=LEDGER)
     spec = spec_from_result(ref_run.turnover, ref_run.weights)
     p = flip_probability(spec)
 
@@ -65,7 +71,7 @@ def replication(index: int) -> dict[str, float]:
 
     for i in range(N_NULLS):
         null = RandomSign(len(bars), np.random.default_rng(seed_base + i), p, spec.exposure)
-        result = run_vectorized(bars, null, ZERO_COST, CAPITAL, CONVENTION)
+        result = run_vectorized(bars, null, ZERO_COST, CAPITAL, CONVENTION, ledger=LEDGER)
         net = result.net_ret[1:]
         per_bar = sharpe(net)
         per_obs.append(per_bar)
@@ -107,7 +113,7 @@ def replication(index: int) -> dict[str, float]:
         out[f"rej_gap_se_{alpha:.2f}"] = abs(frac - alpha) / se_a
 
     for label, costs in (("gross", ZERO_COST), ("net20", CostModel(commission_bps=20.0))):
-        run = run_vectorized(bars, reference, costs, CAPITAL, CONVENTION)
+        run = run_vectorized(bars, reference, costs, CAPITAL, CONVENTION, ledger=LEDGER)
         observed = annualise_sharpe(sharpe(run.net_ret[1:]))
         out[f"ref_sr_{label}"] = observed
         out[f"ref_p_{label}"] = empirical_p_value(observed, sr)
@@ -187,10 +193,7 @@ def main() -> int:
     print("=" * 96)
     print("MAXIMAL BOUNDS OBSERVED (use these to set the gate, with margin):")
     headroom = 0.05 / max(turn_max, 1e-12)
-    print(
-        f"  turnover match error   <= {turn_max:.4%}   "
-        f"(spec band 5%; headroom {headroom:.0f}x)"
-    )
+    print(f"  turnover match error   <= {turn_max:.4%}   (spec band 5%; headroom {headroom:.0f}x)")
     print(f"  exposure match error   <= {expo_max:.4%}")
     print(f"  |null SR| / SE         <= {sr_se_max:.2f} SE")
     print(f"  SR sd / theory         in [{sd_lo:.4f}, {sd_hi:.4f}]")

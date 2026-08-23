@@ -138,6 +138,7 @@ from scipy.stats import norm, skew, kurtosis
 
 EULER = 0.5772156649015329
 
+
 def expected_max_sharpe(n_trials: int, var_across_trials: float) -> float:
     """SR_0: expected maximum per-observation Sharpe under the null."""
     if n_trials < 2:
@@ -146,14 +147,16 @@ def expected_max_sharpe(n_trials: int, var_across_trials: float) -> float:
     b = norm.ppf(1.0 - 1.0 / (n_trials * np.e))
     return np.sqrt(var_across_trials) * ((1 - EULER) * a + EULER * b)
 
+
 def psr(returns: np.ndarray, sr_benchmark: float) -> float:
     """Probabilistic Sharpe Ratio. All inputs per-observation."""
     T = len(returns)
     sr = returns.mean() / returns.std(ddof=1)
     g3 = skew(returns, bias=False)
-    g4 = kurtosis(returns, fisher=False, bias=False)   # NON-excess
-    denom = np.sqrt(1.0 - g3 * sr + ((g4 - 1.0) / 4.0) * sr ** 2)
+    g4 = kurtosis(returns, fisher=False, bias=False)  # NON-excess
+    denom = np.sqrt(1.0 - g3 * sr + ((g4 - 1.0) / 4.0) * sr**2)
     return float(norm.cdf((sr - sr_benchmark) * np.sqrt(T - 1) / denom))
+
 
 def deflated_sharpe(returns: np.ndarray, all_trial_sharpes: np.ndarray) -> float:
     sr0 = expected_max_sharpe(len(all_trial_sharpes), all_trial_sharpes.var(ddof=1))
@@ -229,8 +232,8 @@ def stationary_bootstrap(x: np.ndarray, p: float, n_boot: int, rng) -> np.ndarra
 ```python
 @dataclass(frozen=True)
 class TrialRecord:
-    trial_id: str            # uuid4
-    timestamp: str           # ISO 8601, UTC
+    trial_id: str  # uuid4
+    timestamp: str  # ISO 8601, UTC
     git_sha: str
     data_manifest_hash: str
     strategy: str
@@ -344,10 +347,17 @@ class SelectionRule(ABC):
     def weights(self, is_returns: np.ndarray) -> np.ndarray:
         """T_is × N in-sample returns → length-N weights summing to 1."""
 
+
 class ArgMax(SelectionRule): ...
+
+
 class Softmax(SelectionRule):
     def __init__(self, temperature: float): ...
+
+
 class EqualWeight(SelectionRule): ...
+
+
 class TopK(SelectionRule):
     def __init__(self, k: int): ...
 ```

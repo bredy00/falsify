@@ -28,6 +28,7 @@ from falsify.core.conventions import DEFAULT_CONVENTION, Convention
 from falsify.core.types import BARS_PER_YEAR, Bars
 from falsify.core.vectorized import run_vectorized
 from falsify.costs import CostModel
+from falsify.ledger import Ledger
 from falsify.metrics import annualise_sharpe, sharpe
 from falsify.selection import SelectionRule
 from falsify.strategies.base import Strategy
@@ -55,9 +56,7 @@ class StrategyGrid:
         if self.returns.ndim != 2:
             raise ValueError(f"expected a (T, N) matrix, got shape {self.returns.shape}")
         if self.returns.shape[1] != len(self.names):
-            raise ValueError(
-                f"{self.returns.shape[1]} columns but {len(self.names)} names"
-            )
+            raise ValueError(f"{self.returns.shape[1]} columns but {len(self.names)} names")
         if not np.all(np.isfinite(self.returns)):
             raise ValueError("the grid contains non-finite returns; trim the warm-up first")
 
@@ -76,6 +75,8 @@ def build_grid(
     costs: CostModel,
     initial_capital: float = 10_000.0,
     convention: Convention = DEFAULT_CONVENTION,
+    *,
+    ledger: Ledger,
 ) -> StrategyGrid:
     """Run every configuration through the certified engine and align the results.
 
@@ -89,7 +90,10 @@ def build_grid(
     if not strategies:
         raise ValueError("a grid needs at least one configuration")
 
-    runs = [run_vectorized(bars, s, costs, initial_capital, convention) for s in strategies]
+    runs = [
+        run_vectorized(bars, s, costs, initial_capital, convention, ledger=ledger)
+        for s in strategies
+    ]
     # net_ret[0] is the anchor bar and earns nothing, so it is dropped everywhere.
     series = [r.net_ret[1:] for r in runs]
     common = min(len(s) for s in series)

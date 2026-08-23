@@ -27,10 +27,16 @@ from falsify.core.vectorized import run_vectorized
 from falsify.costs import ZERO_COST
 from falsify.cscv import cscv
 from falsify.evaluation import StrategyGrid, build_grid
+from falsify.ledger import Ledger
 from falsify.reporting import MetricsReport, build_report, write_metrics
 from falsify.selection import ArgMax
 from falsify.strategies.simple import MACrossover
 from falsify.synthetic import bars_from_close, gbm
+
+# B3: the engines take a ledger, always. In-memory and non-persisting here --
+# every invocation is still counted, which is what lets a test assert its own
+# search size, but the gate suite does not write to the shipped ledger.
+LEDGER = Ledger.memory()
 
 Pieces = tuple[Bars, NDArray[np.float64], StrategyGrid, float]
 
@@ -56,8 +62,10 @@ PART_D_FIELDS = (
 def pieces() -> Pieces:
     bars = bars_from_close(gbm(mu=0.08, sigma=0.20, n_bars=1_500, rng=np.random.default_rng(4)))
     strategies = [MACrossover(f, s) for f in (5, 10, 20) for s in (40, 60, 90)]
-    grid = build_grid(bars, strategies, ZERO_COST)
-    result = run_vectorized(bars, MACrossover(20, 60), ZERO_COST, 10_000.0, "next_open")
+    grid = build_grid(bars, strategies, ZERO_COST, ledger=LEDGER)
+    result = run_vectorized(
+        bars, MACrossover(20, 60), ZERO_COST, 10_000.0, "next_open", ledger=LEDGER
+    )
     returns = result.net_ret[100:]
     pbo = cscv(grid.returns, ArgMax(), n_blocks=8).pbo()
     return bars, returns, grid, pbo

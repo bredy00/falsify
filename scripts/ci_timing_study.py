@@ -45,8 +45,13 @@ def fetch_runs(limit: int = 100) -> list[Run]:
     """Every successful run, newest first, with its wall-clock duration."""
     out = subprocess.run(
         [
-            "gh", "run", "list", "--limit", str(limit),
-            "--json", "databaseId,conclusion,createdAt,updatedAt,displayTitle,number",
+            "gh",
+            "run",
+            "list",
+            "--limit",
+            str(limit),
+            "--json",
+            "databaseId,conclusion,createdAt,updatedAt,displayTitle,number",
         ],
         capture_output=True,
         text=True,
@@ -80,7 +85,7 @@ def summarise(label: str, values: list[float]) -> None:
     n = len(values)
     mean = statistics.mean(values)
     sd = statistics.stdev(values) if n > 1 else 0.0
-    se = sd / (n ** 0.5) if n > 1 else 0.0
+    se = sd / (n**0.5) if n > 1 else 0.0
     ordered = sorted(values)
     print(
         f"\n{label}  (n = {n})\n"
