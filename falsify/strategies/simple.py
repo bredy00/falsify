@@ -88,4 +88,15 @@ class Flat(Strategy):
         return out
 
 
-ZOO: tuple[Strategy, ...] = (BuyAndHold(), MACrossover(), CausalZScore())
+# TimeSeriesMomentum joins the zoo here rather than being certified separately, so G1
+# and G2 pick it up automatically -- a strategy that is not in the zoo is a strategy
+# whose causality and twin-engine agreement nobody checked. Imported at the bottom
+# because `momentum` imports the `Strategy` base this module also uses.
+from falsify.strategies.momentum import TimeSeriesMomentum  # noqa: E402
+
+ZOO: tuple[Strategy, ...] = (
+    BuyAndHold(),
+    MACrossover(),
+    CausalZScore(),
+    TimeSeriesMomentum(),
+)

@@ -12,6 +12,7 @@ scaling, which goes flat the moment two paths share state.
 
 from __future__ import annotations
 
+import math
 from functools import lru_cache
 
 import numpy as np
@@ -211,3 +212,81 @@ def compensation_grid(
     for k in range(n_blocks):
         out[bounds[k] : bounds[k + 1]] += means[k]
     return np.asarray(out, dtype=np.float64)
+
+
+def persistent_drift(
+    persistence: float,
+    mu: float,
+    sigma: float,
+    n_bars: int,
+    rng: np.random.Generator,
+    signal_ratio: float = 0.35,
+    s0: float = 100.0,
+    bars_per_year: int = BARS_PER_YEAR,
+) -> Prices:
+    """Prices with a slowly-varying drift -- time-series momentum's power case.
+
+        d[t] = persistence * d[t-1] + eta[t]        (the drift, slow)
+        r[t] = mu/bars_per_year + d[t] + eps[t]     (returns)
+
+    **Why the drift and not the returns.** The obvious way to build a trending series is
+    to autocorrelate the returns, `r[t] = phi*r[t-1] + eps[t]`. That was built first and
+    it does not work, which was measured rather than reasoned about -- a 12-month trend
+    follower over 12 paths of 3,000 bars earned:
+
+        GBM (no autocorrelation)      +0.092 +/- 0.092
+        AR(1) returns, phi = 0.10     +0.041 +/- 0.086
+        AR(1) returns, phi = 0.30     +0.025 +/- 0.109
+        persistent drift, psi = 0.95  +0.516 +/- 0.169
+        persistent drift, psi = 0.99  +1.866 +/- 0.225
+        persistent drift, psi = 0.995 +2.572 +/- 0.257
+
+    Nothing, at a daily phi of 0.30 that no real market comes close to. The reason is
+    arithmetic: an AR(1) has autocorrelation `phi^k`, and `0.30^252` is zero. A signal
+    that integrates a year of returns cannot read a structure that has decayed within a
+    fortnight. Momentum is not lag-1 autocorrelation, and a generator built on that
+    intuition would have made the power test unfalsifiable -- it would have failed for
+    the strategy while the strategy was correct.
+
+    A persistent drift is what trend following actually claims exists: a direction that
+    holds for months. `persistence = 0.99` gives a half-life near 69 bars, about a
+    quarter, which is the right order for a 12-month signal to detect.
+
+    Note the last row. An unrealistically persistent drift produces a Sharpe of 2.57 --
+    which is why PLAYBOOK's "3.0 on SPY means you have a bug" is a sound heuristic: a
+    number that high is achievable only when the process is far more obliging than any
+    market.
+
+    `signal_ratio` splits the return volatility between drift and noise, so the total
+    stays at `sigma` whatever the split: drift carries `ratio` of the standard deviation
+    and noise carries `sqrt(1 - ratio^2)`, and the two add in quadrature to 1.
+    """
+    if not -1.0 < persistence < 1.0:
+        raise ValueError(f"persistence must lie in (-1, 1), got {persistence}")
+    if not 0.0 <= signal_ratio <= 1.0:
+        raise ValueError(f"signal_ratio must lie in [0, 1], got {signal_ratio}")
+    if sigma <= 0.0:
+        raise ValueError(f"sigma must be positive, got {sigma}")
+    if n_bars < 2:
+        raise ValueError(f"need at least 2 bars, got {n_bars}")
+
+    target_sd = sigma / math.sqrt(bars_per_year)
+    drift_sd = target_sd * signal_ratio
+    noise_sd = target_sd * math.sqrt(1.0 - signal_ratio * signal_ratio)
+
+    # Innovation scale that leaves the STATIONARY drift at `drift_sd`. Feeding drift_sd
+    # in directly would inflate it by 1/sqrt(1-psi^2) -- seven-fold at psi = 0.99.
+    innovation_sd = drift_sd * math.sqrt(1.0 - persistence * persistence)
+    eta = rng.normal(0.0, innovation_sd, n_bars)
+
+    drift = np.empty(n_bars)
+    drift[0] = rng.normal(0.0, drift_sd)  # start from the stationary law, not from zero
+    for t in range(1, n_bars):
+        drift[t] = persistence * drift[t - 1] + eta[t]
+
+    returns = mu / bars_per_year + drift + rng.normal(0.0, noise_sd, n_bars)
+    close = np.empty(n_bars)
+    close[0] = s0
+    np.cumprod(1.0 + returns[1:], out=close[1:])
+    close[1:] *= s0
+    return np.asarray(close, dtype=np.float64)

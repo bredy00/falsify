@@ -49,6 +49,40 @@ quoted.
 `tests/gates/test_prop.py` — 14 tests, ~12 s, numpy and scipy only, no network, no engine.
 Regenerate with `pytest tests/gates/test_prop.py -v -s`.
 
+## Phase 8 — time-series momentum, against the literature
+
+`PLAYBOOK` Phase 6 calls for Moskowitz–Ooi–Pedersen (2012) as *"a free calibration check
+against the literature"*: published Sharpe ≈ 0.8, and **"if yours comes out at 3.0 on SPY,
+you have a bug."**
+
+`TimeSeriesMomentum(12m, 1m)` on SPY 2015–2024 earns **+0.606 ± 0.340** annualised, at
+1.56 turns a year, Newey–West t = +1.93. That looks like a hit on 0.8 and is not one — the
+published figure is 58 futures across four asset classes, and most of it is
+diversification a single index cannot reproduce. What the check licenses is the negative:
+nothing here is near 3.0, so nothing indicates a bug.
+
+Buy-and-hold earned **+0.830** over the same window and is the only strategy in the zoo
+whose HAC t-statistic clears 2. That is stated here rather than buried.
+
+The synthetic pair is the sharper result. Same engine, same costs:
+
+| process | TSMOM annualised Sharpe |
+|---|---|
+| GBM — no persistence (the null) | −0.141 ± 0.145 |
+| persistent drift, ψ = 0.99 | **+1.659 ± 0.262** |
+| stationary AR(1) — mean reversion's home ground | **−1.041 ± 0.102** |
+
+A trend follower earns where drift persists and loses, at 10 standard errors, on the exact
+process `CausalZScore` exploits. An edge is a property of a process, not of a strategy.
+
+One finding worth the space: building the trending generator by autocorrelating *returns*
+does not work. At a daily φ of 0.30 — far beyond any real market — a 12-month signal earns
++0.025 ± 0.109, because φ²⁵² is zero. Momentum is not lag-1 autocorrelation, and a
+generator built on that intuition would have failed the strategy while the strategy was
+correct.
+
+---
+
 ## G9 — the price of selectivity, measured
 
 ![PBO against softmax temperature for three kinds of grid](docs/figures/pbo_vs_temperature.png)

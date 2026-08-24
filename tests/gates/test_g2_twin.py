@@ -50,7 +50,11 @@ MASTER_SEED = 20140458
 # Kept small because the event engine is O(T^2) by design: it recomputes the
 # strategy on a growing prefix at every bar. 220 bars across the zoo, three
 # conventions and a cost sweep is the honest trade between coverage and minutes.
-T_BARS = 220
+# 400, not 220. The zoo gained `TimeSeriesMomentum(12m,1m)`, whose declared lookback is
+# 253 bars, and 220 left the engines zero reported bars to agree about -- G2 failed with
+# InsufficientHistory rather than with a disagreement, which is the fixture being wrong
+# and not the gate. 400 leaves 145 reported bars after the longest warm-up in the zoo.
+T_BARS = 400
 
 COST_SWEEP: tuple[CostModel, ...] = (
     ZERO_COST,
