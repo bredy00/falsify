@@ -1,7 +1,7 @@
 # falsify -- entry points. CI runs these same targets, so a green `make ci`
 # locally means a green build (Phase 0, PLAYBOOK Part 4).
 
-.PHONY: help install lint fmt typecheck test gates prop ci reproduce clean g9-figure report
+.PHONY: help install lint fmt typecheck test gates prop ci reproduce clean g9-figure report report-pdf
 
 RUN := uv run
 
@@ -14,6 +14,7 @@ help:
 	@echo "gates       the gate suite only, verbose"
 	@echo "prop        Gate 0.0 with printed statistics and the figure"
 	@echo "g9-figure   G9 PBO-vs-temperature at the full 12,870 splits (minutes)"
+	@echo "report-pdf  Phase 8 status report as a PDF"
 	@echo "ci          lint + typecheck + gates, exactly as CI runs them"
 	@echo "report      write outputs/metrics.json (01 Part D contract)"
 	@echo "reproduce   G10: assert two runs are byte-identical"
@@ -41,6 +42,10 @@ live:
 
 prop:
 	$(RUN) pytest tests/gates/test_prop.py -v -s
+
+# The Phase 8 status report: gate table, invariants, checklists, measurements.
+report-pdf:
+	$(RUN) --group docs python scripts/phase8_report.py
 
 # G9's headline figure, at the full C(16,8) = 12,870 splits. Minutes, not seconds --
 # the CI gate runs C(10,5) on purpose.
