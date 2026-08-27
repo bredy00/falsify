@@ -22,6 +22,7 @@ from falsify.data.loaders import (
     describe_biases,
     load,
 )
+from falsify.data.panel import SECTORS
 from falsify.data.rates import DEFAULT_TICKER, RateSpec, load_rate
 
 # SPY only, per 03 Part H decision 1: a single ticker removes survivorship bias
@@ -35,10 +36,18 @@ SPECS = (
 # 3-month T-bills, with the constant recorded in the manifest.
 RATE_SPEC = RateSpec(DEFAULT_TICKER, "2015-01-01", "2025-01-01")
 
+# Phase 7 opens the universe, under the condition 03 Part H decision 1 named for it:
+# "the engine is certified and you want factor attribution". Nine sector funds rather
+# than nine stocks, because yfinance returns currently-listed tickers only and a stock
+# universe picked today is survivorship-biased over a 2015 start.
+SECTOR_SPECS = tuple(
+    FetchSpec(ticker, "2015-01-01", "2025-01-01", "total_return") for ticker in SECTORS
+)
+
 
 def main() -> int:
     print("fetching -- this is the project's deliberate network access")
-    for spec in SPECS:
+    for spec in (*SPECS, *SECTOR_SPECS):
         try:
             bars = load(
                 spec,

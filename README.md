@@ -49,6 +49,39 @@ quoted.
 `tests/gates/test_prop.py` — 14 tests, ~12 s, numpy and scipy only, no network, no engine.
 Regenerate with `pytest tests/gates/test_prop.py -v -s`.
 
+## Phase 7 — the long/short spread, and what it costs to be honest
+
+Nine SPDR sector funds, 2015–2024, dollar-neutral tertile long/short, zero cost:
+
+| construction | SR | ±SE | turns/yr | HAC t |
+|---|---|---|---|---|
+| XS momentum 12m, monthly | −0.065 | 0.334 | 4.79 | −0.20 |
+| XS momentum 12m, daily | −0.023 | 0.334 | 23.03 | −0.07 |
+| XS momentum 6m, monthly | +0.157 | 0.325 | 6.58 | +0.51 |
+| XS momentum 1m, monthly | −0.432 | 0.318 | 16.31 | −1.37 |
+
+**There is no edge here, and that is the result.** Not one construction reaches a HAC
+t-statistic near 2. The failure mode would be running a fifth and sixth until one did —
+which is the search the trials ledger exists to count.
+
+The gap from Phase 8 is the whole point. `TimeSeriesMomentum(12m,1m)` earned **+0.606** on
+SPY; the *same signal*, ranked cross-sectionally and held dollar-neutral, earns **nothing**.
+That difference is the market. The time-series version is long a rising index most of the
+decade and collects its drift; the cross-sectional version is constrained to zero net
+exposure and cannot. The long/short spread is the cleaner place to look for skill, and it
+usually has less to show.
+
+The panel engine is a second implementation of Part E, so it is held to G2's standard: at
+N = 1 it reproduces `run_vectorized` **bitwise**, max |diff| = 0.000e+00. That check earned
+its keep immediately — the first version computed the warm-up as `max(first_nonzero, lag)`
+instead of `first_nonzero + lag`, and was wrong by 1,313 on a 10,000 account.
+
+The universe opened under Part H decision 1's own revisit condition. It is nine sector
+ETFs rather than nine stocks because yfinance returns currently-listed tickers only, so a
+stock universe picked today is survivorship-biased over a 2015 start.
+
+---
+
 ## Phase 8 — time-series momentum, against the literature
 
 `PLAYBOOK` Phase 6 calls for Moskowitz–Ooi–Pedersen (2012) as *"a free calibration check

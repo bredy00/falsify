@@ -18,7 +18,7 @@ import pytest
 # the current count so adding or removing a few tests needs no edit, but losing a
 # whole file fails loudly. Raise it as the suite grows.
 # 439 selected at Phase 8 / time-series momentum (live tests are deselected in CI).
-DEFAULT_MIN_COLLECTED = 430
+DEFAULT_MIN_COLLECTED = 450
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
