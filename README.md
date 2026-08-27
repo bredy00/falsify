@@ -49,6 +49,46 @@ quoted.
 `tests/gates/test_prop.py` — 14 tests, ~12 s, numpy and scipy only, no network, no engine.
 Regenerate with `pytest tests/gates/test_prop.py -v -s`.
 
+## Phase 7 — factor attribution, and where the return actually came from
+
+Carhart four factors from the Ken French library, HAC standard errors, close-to-close,
+2015–2024:
+
+| strategy | α /yr | HAC t | R² | Mkt-RF | SMB | HML | UMD |
+|---|---|---|---|---|---|---|---|
+| BuyAndHold | +0.12% | +0.37 | 0.995 | +0.975 | −0.126 | +0.015 | −0.007 |
+| **TSMomentum(12m,1m)** | **−0.02%** | **−0.01** | 0.408 | +0.618 | −0.064 | +0.182 | **+0.244** |
+| TSMomentum(12m,3m) | −6.43% | −1.47 | 0.370 | +0.575 | −0.089 | +0.094 | +0.284 |
+| XS momentum 12m | −2.51% | −1.29 | 0.520 | +0.006 | +0.032 | −0.020 | **+0.323** |
+| XS momentum 1m | −5.50% | −2.49 | 0.056 | −0.048 | −0.015 | −0.023 | +0.065 |
+
+PLAYBOOK asks: *"If your alpha t-stat drops below 2 after controlling for momentum, say so
+in the README. That single act of intellectual honesty is worth more to a reader than a
+2.5 Sharpe."*
+
+**It does not drop below 2. It drops to zero** — t = −0.01. The +0.606 Sharpe
+`TimeSeriesMomentum(12m,1m)` earns on SPY is fully accounted for by two exposures the
+regression names: **+0.618 on the market**, because a trend follower is long a rising
+index most of the decade, and **+0.244 on UMD**, because it *is* a momentum strategy.
+Price both and nothing is left. Not one construction in the zoo produces positive alpha
+at |t| > 2.
+
+The buy-and-hold row is the calibration that makes the rest readable: SPY loads 0.975 on
+the market at R² 0.995 with no alpha, which is exactly what an index fund should show.
+
+That check earned its keep immediately. Run against the `next_open` convention it gave
+**β = 0.367, R² = 0.159** for a market index — because `next_open` measures open-to-open
+while the factors are close-to-close, and those correlate 0.40 daily. Every β in the first
+table was wrong and nothing else would have flagged it.
+
+**On β = Cov/Var:** the factor loadings *are* that quantity. At one factor,
+`fit_factors` reproduces `regression.fit_bivariate`'s `cov/var` to **2.2e-16** — asserted,
+not described. The multivariate case generalises it to `(X'X)⁻¹X'r`, which matters
+precisely because the factors are correlated: four separate `cov/var` fits would attribute
+the same return to several factors at once.
+
+---
+
 ## Phase 7 — the long/short spread, and what it costs to be honest
 
 Nine SPDR sector funds, 2015–2024, dollar-neutral tertile long/short, zero cost:

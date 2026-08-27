@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import sys
 
+from falsify.data.factors import load_factors
 from falsify.data.loaders import (
     DEFAULT_CACHE,
     DEFAULT_MANIFEST,
@@ -75,6 +76,16 @@ def main() -> int:
         print(f"  FAILED {RATE_SPEC.cache_key}: {type(exc).__name__}: {exc}")
         return 1
     print(f"  {rate.describe()}")
+
+    print("\nFama-French factors (Phase 7 attribution, Ken French data library):")
+    try:
+        factors = load_factors(
+            allow_network=True, cache_dir=DEFAULT_CACHE, manifest_path=DEFAULT_MANIFEST
+        )
+    except Exception as exc:
+        print(f"  FAILED factors: {type(exc).__name__}: {exc}")
+        return 1
+    print(f"  {factors.describe()}")
 
     print("\nbiases stated rather than fixed:")
     for name, text in describe_biases().items():

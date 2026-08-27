@@ -1,4 +1,14 @@
 {
+  "FF4_2015-01-01_2025-01-01_daily.parquet": {
+    "adjustment": "factor_percent",
+    "auto_adjust": false,
+    "fetched_utc": "2026-08-27T11:57:49.697888+00:00",
+    "first_ts": "2015-01-02 00:00:00",
+    "last_ts": "2024-12-31 00:00:00",
+    "rows": 2516,
+    "sha256": "a43803a9621073d36b7403f7a70625e991eecb6960f36b6adc409d9669a9e1de",
+    "source": "Ken French data library (Dartmouth)"
+  },
   "SPY_2015-01-01_2025-01-01_raw.parquet": {
     "adjustment": "raw",
     "auto_adjust": false,
