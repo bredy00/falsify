@@ -6,10 +6,15 @@ Deterministic by construction: fixed seeds (B9), no wall-clock field, and proven
 from the git SHA and the data manifest digest. `make reproduce` runs it twice and
 asserts the bytes match, which is the metrics half of G10.
 
+The chosen strategy is `TimeSeriesMomentum(12, 1)` -- Phase 8's, and the one this project
+reports on. Buy-and-hold remains the benchmark it has to beat and, on real SPY, does not.
+
 Runs on synthetic GBM rather than the SPY cache so it works in a clean checkout with no
-network and no populated cache. That is a deliberate limitation and not a claim: the
-numbers below describe a moving-average crossover on a random walk, which is a process
-with no edge to find, and the report says so in its own headline.
+network and no populated cache. That is a deliberate limitation and not a claim, and the
+choice of process matters here more than usual: GBM is momentum's NULL. A trend follower
+on a random walk has nothing to find, and the report says so in its own headline rather
+than being pointed at a process picked to flatter it. The real-data number lives in
+`tests/live/test_momentum_live.py`, where it can be checked against a manifest.
 """
 
 from __future__ import annotations
@@ -27,7 +32,7 @@ from falsify.evaluation import build_grid
 from falsify.ledger import Ledger
 from falsify.reporting import build_report, write_metrics
 from falsify.selection import ArgMax
-from falsify.strategies.simple import MACrossover
+from falsify.strategies.momentum import TimeSeriesMomentum
 from falsify.synthetic import bars_from_close, gbm
 
 # B3: the engines take a ledger, always. In-memory and non-persisting here --
@@ -42,7 +47,7 @@ SEED = 4
 BOOTSTRAP_SEED = 1
 N_BARS = 2_500
 BLOCKS = 10
-CHOSEN = MACrossover(20, 60)
+CHOSEN = TimeSeriesMomentum(12, 1)
 COST_GRID = (0.0, 1.0, 2.0, 5.0, 10.0, 20.0, 50.0, 100.0)
 
 
@@ -51,11 +56,15 @@ def main() -> int:
 
     # The full search, so `n_trials_raw` counts what was actually evaluated rather than
     # what was kept. B3's ledger will widen this to every run; today it is this run.
-    strategies = [MACrossover(f, s) for f in range(5, 35, 5) for s in range(40, 130, 10) if f < s]
+    strategies = [
+        TimeSeriesMomentum(lookback, hold)
+        for lookback in (3, 6, 9, 12, 15, 18)
+        for hold in (1, 2, 3, 6)
+    ]
     grid = build_grid(bars, strategies, ZERO_COST, ledger=LEDGER)
 
     result = run_vectorized(bars, CHOSEN, ZERO_COST, 10_000.0, "next_open", ledger=LEDGER)
-    returns = result.net_ret[max(CHOSEN.lookback + 2, 130) :]
+    returns = result.net_ret[1:]
 
     pbo = cscv(grid.returns, ArgMax(), n_blocks=BLOCKS).pbo()
     sweep = sweep_costs(bars, CHOSEN, COST_GRID, ledger=LEDGER)

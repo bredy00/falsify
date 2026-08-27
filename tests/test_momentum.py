@@ -31,6 +31,8 @@ import numpy as np
 import pytest
 from numpy.typing import NDArray
 
+from falsify.core.causality import causality_cut_test
+from falsify.core.types import Bars
 from falsify.core.vectorized import run_vectorized
 from falsify.costs import ZERO_COST, CostModel
 from falsify.ledger import Ledger
@@ -289,3 +291,122 @@ def test_the_hold_keeps_turnover_far_below_a_daily_trend_follower() -> None:
         f"turnover of {turnover:.1f}/yr for a strategy that rebalances monthly. It should "
         "be a handful of flips a year, not a trade a fortnight."
     )
+
+
+# --------------------------------------------------------------------------------------
+# Where look-ahead protection actually lives. Not where it looks like it lives.
+# --------------------------------------------------------------------------------------
+
+
+class _NoDecisionLag(TimeSeriesMomentum):
+    """`TimeSeriesMomentum` with `shift_one` removed. Everything else identical."""
+
+    @property
+    def name(self) -> str:
+        return "NoDecisionLagTSMOM"
+
+    def signals(self, bars: Bars) -> Prices:
+        close = bars.close
+        raw = np.full(close.size, np.nan)
+        raw[self.window :] = np.sign(close[self.window :] / close[: -self.window] - 1.0)
+        return self._hold(raw)  # no shift_one
+
+
+def test_dropping_the_decision_lag_still_passes_the_causality_cut() -> None:
+    """The standard TSM warning is "use shift(1) or you are predicting the past". We do
+    use it -- and the tau-test does NOT catch its absence, which is worth knowing before
+    trusting G1 to cover this.
+
+    `sign(close[t] / close[t-252])` reads only `bars[0:t+1]`. That satisfies the Part A1
+    contract exactly, so scrambling the future leaves the past bitwise identical and the
+    cut passes. Omitting the lag is not a causality violation; it is an execution
+    assumption -- that you can trade at a close you have only just observed.
+
+    What actually stops that here is the engine's convention lag: `next_open` applies the
+    weight from `t - 2`, structurally, for every strategy. `shift_one` is a second bar of
+    prudence on top, not the thing standing between this project and a look-ahead.
+
+    Asserted because a reader who believed G1 covered it would be wrong in a way no test
+    would tell them.
+    """
+    prices = gbm_path(np.random.default_rng(11), 1_200)
+
+    for strategy in (TimeSeriesMomentum(12, 1), _NoDecisionLag(12, 1)):
+        for include_cut in (False, True):
+            causality_cut_test(
+                lambda p, s=strategy: s.signals(bars_from_close(p)),  # type: ignore[misc]
+                prices,
+                taus=(400, 700, 1_000),
+                rng=np.random.default_rng(3),
+                n_seeds=4,
+                include_cut=include_cut,
+            )
+
+
+def test_the_decision_lag_is_exactly_one_bar() -> None:
+    """`shift_one` shifts by one bar and does nothing else. Measured bitwise on SPY and
+    asserted here on synthetic: our signal at t is the unlagged signal at t-1, exactly.
+
+    That is the whole content of the "use shift(1)" advice, and stating it as an identity
+    is stronger than describing it -- a version that shifted by two, or that shifted the
+    held weight rather than the raw signal, would still look plausible.
+    """
+    bars = bars_from_close(gbm_path(np.random.default_rng(12), 1_200))
+    lagged = TimeSeriesMomentum(12, 1).signals(bars)
+    unlagged = _NoDecisionLag(12, 1).signals(bars)
+
+    both = np.isfinite(lagged[1:]) & np.isfinite(unlagged[:-1])
+    assert np.array_equal(lagged[1:][both], unlagged[:-1][both]), (
+        "the decision lag is not exactly one bar; shift_one is doing something other than "
+        "what its name says"
+    )
+
+
+def test_the_reported_window_starts_after_the_full_lookback() -> None:
+    """The "12-month data drag": a 12-month lookback means the first year produces no
+    signal, and performance must be measured from where trading actually starts.
+
+    The engine already enforces it -- `equity[0]` is exactly the initial capital and no
+    NaN survives into the reported window -- so there is no date arithmetic for a caller
+    to get wrong. Measured on SPY: data begins 2015-01-02, metrics begin 2016-01-07,
+    1.01 years later.
+    """
+    n = 1_200
+    bars = bars_from_close(gbm_path(np.random.default_rng(13), n))
+    strategy = TimeSeriesMomentum(12, 1)
+    result = run_vectorized(bars, strategy, ZERO_COST, CAPITAL, "next_open", ledger=LEDGER)
+
+    first_reported = n - len(result)
+    assert first_reported == strategy.lookback + 2, "next_open lags two bars past the lookback"
+    assert result.equity[0] == CAPITAL, "the reported window must start at the initial capital"
+    assert np.all(np.isfinite(result.net_ret)), "no NaN may survive the warm-up"
+
+
+def test_cost_is_charged_on_the_sign_flips_and_nowhere_else() -> None:
+    """The third standard warning: charge for switching from +1 to -1.
+
+    Turnover here is exactly 2.0 on flip bars and exactly 0.0 on every other bar, so the
+    engine's `turnover * capital * cost_rate` term charges precisely on switches with no
+    special case. Measured on SPY at 5 bps: 87.20 of 10,000 over nine years, 0.87%.
+    """
+    bars = bars_from_close(trending_path(np.random.default_rng(14), 2_000))
+    result = run_vectorized(
+        bars, TimeSeriesMomentum(12, 1), ZERO_COST, CAPITAL, "next_open", ledger=LEDGER
+    )
+    flips = np.flatnonzero(np.diff(result.weights) != 0.0) + 1
+    assert flips.size > 0, "no flips; this asserts nothing"
+    assert np.allclose(result.turnover[flips], 2.0), "a +1 to -1 reversal is 2.0 of turnover"
+    assert np.allclose(np.delete(result.turnover, flips), 0.0), (
+        "turnover was charged on a bar where the weight did not change"
+    )
+
+    charged = run_vectorized(
+        bars,
+        TimeSeriesMomentum(12, 1),
+        CostModel(commission_bps=10.0),
+        CAPITAL,
+        "next_open",
+        ledger=LEDGER,
+    )
+    paid = np.flatnonzero(charged.costs > 0.0)
+    assert np.array_equal(paid, flips), "cost was charged on bars where nothing traded"
