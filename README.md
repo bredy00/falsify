@@ -49,6 +49,40 @@ quoted.
 `tests/gates/test_prop.py` — 14 tests, ~12 s, numpy and scipy only, no network, no engine.
 Regenerate with `pytest tests/gates/test_prop.py -v -s`.
 
+## Phase 8 — the figure that shows overfitting
+
+![In-sample against out-of-sample parameter surfaces](docs/figures/parameter_surface.png)
+
+PLAYBOOK calls this *"the best figure in the repo"*, and the claim it makes is not that
+the right panel looks worse — it's that the **structure doesn't survive**. The bright 15m
+band on the left is the region a reader's eye picks as "the good parameters". It is absent
+on the right.
+
+**Spearman ρ between the two surfaces = −0.015.** In-sample rank tells you nothing about
+out-of-sample rank. The in-sample winner (15m, 1m) at +0.874 earns +0.432 out of sample.
+
+Both panels share one colour scale, so heights are comparable rather than patterns — on
+separate scales the noise would look as structured as the signal.
+
+That 15m band has a mundane cause worth knowing: at a 15-month lookback the signal has
+**zero flips in the first half**. SPY rose continuously 2016–2020, so the trailing return
+never turned negative and every holding period produced an identical constant-long path.
+The ridge is *being long a market that only went up*.
+
+![Tearsheet](docs/figures/tearsheet.png)
+
+The dashed grey line is buy-and-hold in every panel it fits, and it is above the strategy
+throughout. Two things the tearsheet surfaces that the summary statistics hide:
+
+- **Max drawdown is identical to the benchmark's, −32.05%, troughing the same day.** A
+  12-month signal cannot turn fast enough for a four-week crash, so through COVID the
+  trend follower simply *was* buy-and-hold, at weight exactly 1.0.
+- **Break-even cost is 658 bps.** At 1.56 turns a year the strategy is nearly
+  cost-insensitive — which is the holding period earning its keep, and the one dimension
+  on which it clearly beats a daily-rebalanced trend follower.
+
+---
+
 ## Phase 7 — factor attribution, and where the return actually came from
 
 Carhart four factors from the Ken French library, HAC standard errors, close-to-close,

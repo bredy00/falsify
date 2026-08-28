@@ -1,7 +1,7 @@
 # falsify -- entry points. CI runs these same targets, so a green `make ci`
 # locally means a green build (Phase 0, PLAYBOOK Part 4).
 
-.PHONY: help install lint fmt typecheck test gates prop ci reproduce clean g9-figure report report-pdf
+.PHONY: help install lint fmt typecheck test gates prop ci reproduce clean g9-figure report report-pdf tearsheet surface
 
 RUN := uv run
 
@@ -15,6 +15,8 @@ help:
 	@echo "prop        Gate 0.0 with printed statistics and the figure"
 	@echo "g9-figure   G9 PBO-vs-temperature at the full 12,870 splits (minutes)"
 	@echo "report-pdf  the project board as a PDF"
+	@echo "tearsheet   Phase 8 tearsheet (needs the cache)"
+	@echo "surface     in-sample vs out-of-sample parameter surface (needs the cache)"
 	@echo "ci          lint + typecheck + gates, exactly as CI runs them"
 	@echo "report      write outputs/metrics.json (01 Part D contract)"
 	@echo "reproduce   G10: assert two runs are byte-identical"
@@ -46,6 +48,14 @@ prop:
 # The project board: gate table, invariants, checklists, measurements.
 report-pdf:
 	$(RUN) --group docs python scripts/board_report.py
+
+# Phase 8's two figures. Both need the populated cache, which is why neither is in
+# `make reproduce` -- G10 has to pass in a clean checkout with no network.
+tearsheet:
+	$(RUN) python scripts/tearsheet.py
+
+surface:
+	$(RUN) python scripts/parameter_surface.py
 
 # G9's headline figure, at the full C(16,8) = 12,870 splits. Minutes, not seconds --
 # the CI gate runs C(10,5) on purpose.
