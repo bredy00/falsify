@@ -1,6 +1,6 @@
 # 03 — Agent Handoff
 
-> **Purpose:** the operating manual for any LLM working on this repo — Claude Code subagents, a fresh session, or a future you with no memory of these decisions. Load this first.
+> **Purpose:** the operating manual for any LLM working on this repo — a coding agent, a fresh session, or a future you with no memory of these decisions. Load this first.
 
 ---
 
