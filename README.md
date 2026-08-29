@@ -1,10 +1,56 @@
-# falsify — workspace
+# falsify
 
-A backtesting framework that reports an estimate **and its error bar**, plus the probability that
-the number survived the search which produced it.
+A backtesting engine that reports an estimate, **its error bar**, and the probability the
+number survived the search that produced it.
 
-**Start with `03-AGENT-HANDOFF.md`.** It carries the invariants, the precedence order, and the
-first three sessions. Everything else is downstream of it.
+It was built to be capable of returning a negative answer about its own strategy. It does.
+
+---
+
+## The result
+
+`TimeSeriesMomentum(12m, 1m)` on SPY, 2015–2024, zero cost:
+
+| | strategy | buy-and-hold |
+|---|---|---|
+| annualised Sharpe | **+0.606 ± 0.340** | **+0.923** |
+| Newey–West *t* | +1.926 | **+2.924** |
+| bootstrap 95% CI | [+0.042, +1.288] | — |
+| max drawdown | −32.05% | −32.05% |
+| **four-factor alpha** | **−0.02 %/yr, *t* = −0.005** | — |
+| deflated Sharpe (N = 24) | **0.000** | — |
+| PBO over 252 splits | **0.821** | — |
+
+**The engine does not recommend trading it.** The +0.606 is fully explained by two
+exposures the regression names — **+0.618 on the market** and **+0.244 on momentum** — both
+of which a reader can buy for a few basis points. Price them and nothing remains. The
+benchmark beat it, with the same maximum drawdown on the same day.
+
+Seven independent parts of the machinery reach that verdict, and none was tuned to agree
+with the others.
+
+→ **[The full write-up is in `docs/research-note.md`](docs/research-note.md)** — motivation,
+data and biases, the causality argument, cost model, results with intervals, deflation,
+factor attribution, limitations, and what would have to be true for this to be tradeable.
+
+---
+
+## The two heatmaps
+
+![In-sample against out-of-sample parameter surfaces](docs/figures/parameter_surface.png)
+
+Sharpe over the same 60-configuration grid, first half against second half, on one shared
+colour scale. The bright 15-month band on the left is the region a reader's eye reads as
+"the good parameters". It is absent on the right.
+
+**Spearman ρ between the surfaces = −0.015.** In-sample rank carries no information about
+out-of-sample rank. The in-sample winner, (15m, 1m) at +0.874, earns +0.432 out of sample.
+
+That band has a mundane cause: at a 15-month lookback the signal has **zero flips in the
+first half**, because SPY rose continuously from 2016 to 2020. Every holding period produced
+an identical constant-long path. The ridge is *being long a market that only went up*.
+
+![Tearsheet](docs/figures/tearsheet.png)
 
 ---
 
@@ -49,37 +95,20 @@ quoted.
 `tests/gates/test_prop.py` — 14 tests, ~12 s, numpy and scipy only, no network, no engine.
 Regenerate with `pytest tests/gates/test_prop.py -v -s`.
 
-## Phase 8 — the figure that shows overfitting
+## Phase 8 — what the tearsheet surfaces
 
-![In-sample against out-of-sample parameter surfaces](docs/figures/parameter_surface.png)
+The two figures are at the top; this is what they say that the summary statistics hide.
 
-PLAYBOOK calls this *"the best figure in the repo"*, and the claim it makes is not that
-the right panel looks worse — it's that the **structure doesn't survive**. The bright 15m
-band on the left is the region a reader's eye picks as "the good parameters". It is absent
-on the right.
-
-**Spearman ρ between the two surfaces = −0.015.** In-sample rank tells you nothing about
-out-of-sample rank. The in-sample winner (15m, 1m) at +0.874 earns +0.432 out of sample.
-
-Both panels share one colour scale, so heights are comparable rather than patterns — on
-separate scales the noise would look as structured as the signal.
-
-That 15m band has a mundane cause worth knowing: at a 15-month lookback the signal has
-**zero flips in the first half**. SPY rose continuously 2016–2020, so the trailing return
-never turned negative and every holding period produced an identical constant-long path.
-The ridge is *being long a market that only went up*.
-
-![Tearsheet](docs/figures/tearsheet.png)
-
-The dashed grey line is buy-and-hold in every panel it fits, and it is above the strategy
-throughout. Two things the tearsheet surfaces that the summary statistics hide:
-
-- **Max drawdown is identical to the benchmark's, −32.05%, troughing the same day.** A
-  12-month signal cannot turn fast enough for a four-week crash, so through COVID the
-  trend follower simply *was* buy-and-hold, at weight exactly 1.0.
+- **Max drawdown is identical to the benchmark's, −32.05%, troughing the same day.** The
+  equity curves differ elsewhere — but through the COVID crash the strategy held weight
+  exactly 1.0, because a 12-month signal cannot turn inside a four-week decline. When
+  protection would have mattered most, the trend follower *was* buy-and-hold.
 - **Break-even cost is 658 bps.** At 1.56 turns a year the strategy is nearly
-  cost-insensitive — which is the holding period earning its keep, and the one dimension
-  on which it clearly beats a daily-rebalanced trend follower.
+  cost-insensitive, which is the holding period earning its keep and the one dimension on
+  which it clearly beats a daily-rebalanced trend follower. The first cost grid stopped at
+  100 bps and returned NaN — correct behaviour, uninformative figure.
+- **Both surface panels share one colour scale.** On separate scales the out-of-sample
+  noise would look as structured as the in-sample signal — same data, opposite conclusion.
 
 ---
 
@@ -258,9 +287,10 @@ Numeric output and the figure's bytes are identical across two runs at the same 
 
 ---
 
-## Gate status
+## Gate status — all ten green
 
-**297 tests, 0 skipped**, entirely offline. `make ci` runs exactly what CI runs.
+**475 tests, 0 skipped**, entirely offline, plus **20 live tests** against the pinned
+cache. `make ci` runs exactly what CI runs.
 
 **Timings carry error bars, including this project's own.** Over 14 successful runs CI
 averages **49.3 s ± 1.9 (SE)**, with a standard deviation of 7.2 s — 14.7% of the mean,
@@ -280,8 +310,11 @@ draws rather than measurements. Regenerate with
 | **G6** | Null calibration, 1,000 coin flips | **green** — turnover matched to 0.35%, verified in 15 worlds |
 | **G7** | Leakage trap: deliberately leaky pipelines must be caught | **green** — 5 traps rejected |
 | **G8** | Purged, embargoed walk-forward | **green** — 3 splitters, purge + embargo asserted |
-| G9 | PBO via CSCV over 12,870 splits, on `SelectionRule` | green; null calibrates to 0.5, fires on a compensation trap at 0.79 |
-| G10 | Reproducibility from pinned hashes | green — two runs byte-identical across three figures and `metrics.json` |
+| **G9** | PBO via CSCV over 12,870 splits, on `SelectionRule` | **green** — null calibrates to 0.5, fires on a compensation trap at 0.83 |
+| **G10** | Reproducibility from pinned hashes | **green** — two runs byte-identical across three figures and `metrics.json` |
+
+Ten invariants (`B1`–`B10`) hold alongside them, including the append-only trials ledger
+from which `N` is read and never typed.
 
 Everything through G8 runs with no network, no API key and no rate limit. That is the whole point of
 the ordering in `00`: the certified core is testable in CI without a single flaky test that fails

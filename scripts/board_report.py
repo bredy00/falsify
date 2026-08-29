@@ -29,7 +29,7 @@ from reportlab.platypus import PageBreak, SimpleDocTemplate, Spacer
 from scripts.status_report import S, git, on_page, p, status_chip, table
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-REPORT_DATE = date(2026, 8, 27)
+REPORT_DATE = date(2026, 8, 28)
 OUT_PATH = REPO_ROOT / "docs" / f"status-{REPORT_DATE.isoformat()}.pdf"
 
 FULL = A4[0] - 36 * mm
@@ -125,8 +125,8 @@ DOCS = (
         "green",
         "N-asset panel, long/short, attribution",
     ),
-    Row("PLAYBOOK Phase 8 reporting", "partial", "metrics.json done; tearsheet and surfaces open"),
-    Row("PLAYBOOK Phase 9 writeup", "open", "docs/research-note.md"),
+    Row("PLAYBOOK Phase 8 reporting", "green", "metrics.json, tearsheet, IS/OOS parameter surface"),
+    Row("PLAYBOOK Phase 9 writeup", "green", "docs/research-note.md; README leads with the result"),
 )
 
 ATTRIBUTION = (
@@ -164,9 +164,8 @@ def story() -> list[Any]:
     flow: list[Any] = [
         p("falsify — the board", S.h1),
         p(
-            "Ten gates green, ten invariants held, and a strategy that does not ship. "
-            "Phases 0 through 8 complete except reporting; Phase 7's cross-sectional and "
-            "attribution work landed this session.",
+            "Every phase complete. Ten gates green, ten invariants held, and a strategy the "
+            "engine declines to trade -- which is the machinery working, not failing.",
             S.lede,
         ),
         Spacer(1, 4 * mm),
@@ -261,24 +260,26 @@ def story() -> list[Any]:
         *checklist("Invariants — 03 Part B", INVARIANTS),
         PageBreak(),
         *checklist("Specification documents", DOCS),
-        p("What is next", S.h2),
+        p("What is left", S.h2),
         table(
             [
                 ["item", "why"],
                 [
-                    p("Phase 8 — tearsheet and parameter surfaces", S.cell),
+                    p("Nothing blocking", S.cell),
                     p(
-                        "The in-sample against out-of-sample heatmap PLAYBOOK calls the best "
-                        "figure in the repo. It is the last visual argument the project is "
-                        "missing.",
+                        "Phases 0 through 9 are complete. The research note is written, the "
+                        "README leads with the result, and every figure the specification "
+                        "asked for exists.",
                         S.cell,
                     ),
                 ],
                 [
-                    p("Phase 9 — research note", S.cell),
+                    p("If the project continues", S.cell),
                     p(
-                        "docs/research-note.md, structured as a paper. It now has a genuinely "
-                        "publishable finding to lead with rather than a Sharpe to defend.",
+                        "A longer window is the only thing that would change the verdict: "
+                        "10.7 years are needed to distinguish this Sharpe from selection luck "
+                        "and 10.0 exist. Evaluating more configurations widens that gap "
+                        "rather than closing it.",
                         S.cell,
                     ),
                 ],
