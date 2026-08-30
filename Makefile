@@ -1,7 +1,7 @@
 # falsify -- entry points. CI runs these same targets, so a green `make ci`
 # locally means a green build (Phase 0, PLAYBOOK Part 4).
 
-.PHONY: help install lint fmt typecheck test gates prop ci reproduce clean g9-figure report report-pdf tearsheet surface
+.PHONY: help install lint fmt fmt-check typecheck test gates prop ci reproduce clean g9-figure report report-pdf tearsheet surface
 
 RUN := uv run
 
@@ -9,6 +9,7 @@ help:
 	@echo "install     sync the locked environment (uv.lock)"
 	@echo "lint        ruff check"
 	@echo "fmt         ruff format (writes)"
+	@echo "fmt-check   ruff format --check (CI runs this)"
 	@echo "typecheck   mypy --strict over falsify/ and tests/"
 	@echo "test        full pytest suite"
 	@echo "gates       the gate suite only, verbose"
@@ -29,6 +30,9 @@ lint:
 
 fmt:
 	$(RUN) ruff format .
+
+fmt-check:
+	$(RUN) ruff format --check .
 
 typecheck:
 	$(RUN) mypy
@@ -67,7 +71,7 @@ surface:
 g9-figure:
 	$(RUN) python scripts/g9_temperature.py
 
-ci: check-actions lint typecheck gates
+ci: check-actions lint fmt-check typecheck gates
 
 # Catches an unresolvable `uses:` ref before a push turns it into a run that dies
 # before executing a step. actionlint does not check this.

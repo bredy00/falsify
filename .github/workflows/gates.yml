@@ -59,6 +59,10 @@ jobs:
       - name: Lint
         run: uv run ruff check .
 
+      # Formatting drifted once without CI noticing, in a markdown code block.
+      - name: Format
+        run: uv run ruff format --check .
+
       - name: Typecheck
         run: uv run mypy
 
