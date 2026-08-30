@@ -29,16 +29,28 @@ from falsify.core.vectorized import run_vectorized
 from falsify.costs import ZERO_COST
 from falsify.cscv import cscv
 from falsify.evaluation import build_grid
-from falsify.ledger import Ledger
+from falsify.ledger import LEDGER_PATH, Ledger, Recording, Scope
 from falsify.reporting import build_report, write_metrics
 from falsify.selection import ArgMax
 from falsify.strategies.momentum import TimeSeriesMomentum
 from falsify.synthetic import bars_from_close, gbm
 
-# B3: the engines take a ledger, always. In-memory and non-persisting here --
-# every invocation is still counted, which is what lets a test assert its own
-# search size, but the gate suite does not write to the shipped ledger.
-LEDGER = Ledger.memory()
+# B3: the engines take a ledger, always. This one is FILE-BACKED, and it is the only
+# script in the repository that writes to the shipped ledger. That is the whole point --
+# `N` has to survive the process that produced it, or "how many configurations did you
+# try" is answered per-session and the answer flatters you a little more each time.
+#
+# `TRIALS` rather than `ALL`: a re-run of the same search on the same commit recomputes
+# the same content addresses and writes nothing, so running this twice is idempotent and
+# G10 holds. What grows the file is genuinely new work -- a new configuration, new data,
+# or new code.
+LEDGER = Ledger(path=LEDGER_PATH, recording=Recording.TRIALS)
+
+# What `N` counts. Every TSMomentum trial in the ledger at zero cost, cumulative across
+# every run there has ever been -- not just this one. The cost sweep below records seven
+# more trials at non-zero cost; they are real evaluations and belong in the file, but
+# they are not candidates this strategy was chosen from, so they are out of scope.
+SCOPE = Scope(strategies=("TSMomentum",), cost_bps=0.0)
 
 OUTPUT = Path("outputs/metrics.json")
 MANIFEST = Path("data/MANIFEST.json")
@@ -54,8 +66,9 @@ COST_GRID = (0.0, 1.0, 2.0, 5.0, 10.0, 20.0, 50.0, 100.0)
 def main() -> int:
     bars = bars_from_close(gbm(mu=0.08, sigma=0.20, n_bars=N_BARS, rng=np.random.default_rng(SEED)))
 
-    # The full search, so `n_trials_raw` counts what was actually evaluated rather than
-    # what was kept. B3's ledger will widen this to every run; today it is this run.
+    # The full search, so what is counted is what was evaluated rather than what was
+    # kept. These 24 go into the ledger; `n_trials_raw` reads them back out of it along
+    # with everything any previous run put there.
     strategies = [
         TimeSeriesMomentum(lookback, hold)
         for lookback in (3, 6, 9, 12, 15, 18)
@@ -77,10 +90,16 @@ def main() -> int:
         sweep.break_even_bps(),
         np.random.default_rng(BOOTSTRAP_SEED),
         manifest_path=MANIFEST,
+        ledger=LEDGER,
+        scope=SCOPE,
     )
     write_metrics(OUTPUT, report)
 
-    print(f"strategy: {CHOSEN.name} chosen from {grid.n_configs} configurations")
+    print(
+        f"strategy: {CHOSEN.name} chosen from {grid.n_configs} configurations "
+        f"this run; ledger reports N = {report.n_trials_raw} in scope "
+        f"({LEDGER.n_trials()} trials in the file overall)"
+    )
     print(report.headline())
     print(f"\nwrote {OUTPUT}")
     return 0

@@ -58,6 +58,10 @@ from falsify.data.manifest import sha256_of
 ID_LENGTH = 16  # hex characters; 64 bits, ample at the N this project reaches
 UNKNOWN = "unknown"
 
+# Where the shipped ledger lives. Spec: "the file ships in the repository where a reader
+# can verify `N` for themselves" (Part C rule 4). Relative to the repository root.
+LEDGER_PATH = Path("data/trials.jsonl")
+
 ParamValue = str | int | float | bool | None
 Params = dict[str, ParamValue]
 
@@ -101,6 +105,14 @@ def git_sha(repo: Path | None = None) -> str:
     The suffix is part of the identity, not a warning printed elsewhere: a trial run on
     uncommitted code hashes differently from one run on shipped code, which is exactly
     what should happen. Confusing the two is how a result outlives the code that made it.
+
+    **The trials ledger is excluded from the dirty check**, and it has to be. The ledger
+    is tracked, so appending a trial to it would mark the tree dirty, which would change
+    this SHA, which would give the *next* run a different `trial_id` for the identical
+    configuration -- so `N` would grow on every run and two runs would disagree, taking
+    G10 with them. The exclusion is not a convenience: `git_sha` identifies the state of
+    the *code*, and the ledger is output the code produced. A run recording what it did
+    is not a change to what it is.
     """
     root = repo or Path(__file__).resolve().parent.parent
     try:
@@ -113,7 +125,7 @@ def git_sha(repo: Path | None = None) -> str:
             timeout=10,
         ).stdout.strip()
         dirty = subprocess.run(
-            ["git", "status", "--porcelain"],
+            ["git", "status", "--porcelain", "--", ".", f":(exclude){LEDGER_PATH.as_posix()}"],
             cwd=root,
             capture_output=True,
             text=True,
@@ -327,6 +339,15 @@ class Scope:
     universe: tuple[str, ...] = ()
     date_range: tuple[str, str] | None = None
     series_digest: str | None = None
+    cost_bps: float | None = None
+    """Count only trials run at this cost.
+
+    A cost sweep evaluates one configuration at eight cost levels and records eight
+    trials, correctly -- they are eight distinct evaluations. But they are not eight
+    candidates a strategy was *selected* from, and a deflated Sharpe wants the width of
+    the choice, not the count of the runs. A report of the zero-cost Sharpe scopes to
+    the zero-cost trials, which keeps `N` like-for-like with the number being deflated.
+    """
 
     def matches(self, record: TrialRecord) -> bool:
         if self.strategies and not any(record.strategy.startswith(s) for s in self.strategies):
@@ -335,7 +356,9 @@ class Scope:
             return False
         if self.date_range is not None and record.date_range != self.date_range:
             return False
-        return not (self.series_digest is not None and record.series_digest != self.series_digest)
+        if self.series_digest is not None and record.series_digest != self.series_digest:
+            return False
+        return self.cost_bps is None or record.cost_bps == self.cost_bps
 
 
 # --------------------------------------------------------------------------------------
@@ -455,6 +478,14 @@ class Ledger:
         if self.path is None:
             if scope is None:
                 return len(self.seen)
+            if self.recording is Recording.NONE:
+                raise LedgerError(
+                    "a NONE ledger retains no rows, so it cannot count a scoped subset "
+                    "of them -- it would answer 0 regardless of what passed through. "
+                    "Under-reporting N is the direction that flatters a deflated "
+                    "Sharpe, so this raises instead. Use Recording.TRIALS to keep the "
+                    "rows, or scope=None to count everything this process observed."
+                )
             return sum(1 for r in self._cache if scope.matches(r))
         self._prime()
         records = self.live()
@@ -492,6 +523,7 @@ ObserveHook = Callable[[TrialRecord], None]
 
 __all__ = [
     "ID_LENGTH",
+    "LEDGER_PATH",
     "UNKNOWN",
     "Ledger",
     "LedgerError",

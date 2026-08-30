@@ -12,8 +12,15 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from numpy.typing import NDArray
 
-from falsify.reporting import MetricsReport, write_metrics
+from falsify.core.types import Bars
+from falsify.costs import ZERO_COST
+from falsify.evaluation import StrategyGrid, build_grid
+from falsify.ledger import Ledger, LedgerError, Recording, Scope
+from falsify.reporting import MetricsReport, build_report, describe_source, write_metrics
+from falsify.strategies.simple import MACrossover
+from falsify.synthetic import bars_from_close, gbm
 
 MANIFEST = Path("data/MANIFEST.json")
 
@@ -231,3 +238,105 @@ def test_np_float_inputs_are_accepted() -> None:
     the engine actually produces."""
     r = report(sharpe_annual=np.float64(1.42), pbo=np.float64(0.34))
     assert r.ships
+
+
+# --------------------------------------------------------------------------------------
+# B3 rule 3: `N` is read from the ledger. Not from the grid, not from a person.
+# --------------------------------------------------------------------------------------
+
+
+Pieces = tuple[Bars, NDArray[np.float64], StrategyGrid]
+
+
+@pytest.fixture(scope="module")
+def pieces() -> Pieces:
+    bars = bars_from_close(gbm(mu=0.08, sigma=0.2, n_bars=900, rng=np.random.default_rng(7)))
+    counting = Ledger.memory(Recording.TRIALS)
+    grid = build_grid(
+        bars, [MACrossover(f, s) for f in (5, 10) for s in (40, 60)], ZERO_COST, ledger=counting
+    )
+    return bars, grid.returns[:, 0], grid
+
+
+def test_n_comes_from_the_ledger_and_not_from_the_grid(pieces: Pieces, tmp_path: Path) -> None:
+    """A ledger holding an earlier session's trials must widen `N` beyond this grid.
+
+    The grid knows only the configurations this call happened to hold. Before this was
+    wired, that was `N` -- machine-derived, so not hand-typed, but scoped to one process.
+    A search spread over several sessions therefore reported the last session's width,
+    and deflated against it.
+    """
+    bars, returns, grid = pieces
+    ledger = Ledger(path=tmp_path / "trials.jsonl", recording=Recording.TRIALS)
+    # An earlier session: a wider sweep of the same family.
+    build_grid(bars, [MACrossover(f, 90) for f in (5, 10, 15, 20, 25)], ZERO_COST, ledger=ledger)
+    # This session.
+    build_grid(
+        bars, [MACrossover(f, s) for f in (5, 10) for s in (40, 60)], ZERO_COST, ledger=ledger
+    )
+
+    built = build_report(
+        bars,
+        returns,
+        grid,
+        0.4,
+        11.3,
+        np.random.default_rng(1),
+        manifest_path=MANIFEST,
+        ledger=ledger,
+        n_boot=80,
+    )
+    assert built.n_trials_raw == 9, (
+        f"expected 5 earlier + 4 current = 9 trials, got {built.n_trials_raw}. `N` that "
+        "counts only the current grid forgets every session before this one."
+    )
+    assert grid.n_configs == 4, "fixture drifted; the point is that N exceeds the grid"
+
+
+def test_a_ledger_that_saw_less_than_the_grid_is_refused(pieces: Pieces, tmp_path: Path) -> None:
+    """F7 for the reporting layer: the guard has to be shown firing.
+
+    A ledger reporting fewer trials than the grid holds means either a call site
+    evaluated configurations without recording them, or the scope excludes trials it
+    should count. Both under-report `N`, and under-reporting `N` deflates less, which
+    makes the result look stronger than the search behind it justifies. It raises rather
+    than warns because a warning in that direction is one nobody reads.
+    """
+    bars, returns, grid = pieces
+    starved = Ledger(path=tmp_path / "few.jsonl", recording=Recording.TRIALS)
+    build_grid(bars, [MACrossover(5, 40)], ZERO_COST, ledger=starved)  # 1 trial, grid has 4
+
+    with pytest.raises(LedgerError, match="cannot deflate against a search smaller"):
+        build_report(
+            bars,
+            returns,
+            grid,
+            0.4,
+            11.3,
+            np.random.default_rng(1),
+            manifest_path=MANIFEST,
+            ledger=starved,
+            n_boot=80,
+        )
+
+
+def test_the_source_string_names_a_file_a_reader_can_open(tmp_path: Path) -> None:
+    """The field's job is that `N` is checkable, so it must name the file and the filter.
+
+    It must also not leak somebody's home directory into a published artefact, which is
+    why an absolute path is reduced to its name.
+    """
+    relative = describe_source(
+        Ledger(path=Path("data/trials.jsonl"), recording=Recording.TRIALS),
+        Scope(strategies=("TSMomentum",), cost_bps=0.0),
+    )
+    assert "data/trials.jsonl" in relative and "cumulative" in relative
+    assert "strategies=TSMomentum" in relative and "cost_bps=0" in relative
+
+    absolute = describe_source(
+        Ledger(path=tmp_path / "trials.jsonl", recording=Recording.TRIALS), None
+    )
+    assert str(tmp_path) not in absolute, "an absolute path reached the reporting contract"
+    assert absolute.startswith("trials.jsonl")
+
+    assert "in-memory" in describe_source(Ledger.memory(Recording.TRIALS), None)

@@ -20,14 +20,23 @@ docs/superpowers/specs/2026-08-21-trials-ledger-design.md, Conflict 2). Provenan
 from `git_sha` and `data_manifest_hash` instead, which are content-derived: they change
 when and only when the inputs change, which is what provenance is actually for.
 
-**Where `n_trials_raw` comes from, and its current limit.** B3 says `N` is read from the
-trials ledger and never hand-typed. The ledger exists -- `falsify/ledger.py`, gated by
-`tests/gates/test_b3_ledger.py` -- but `build_report` does not read from it yet: it takes
-`N` from the `StrategyGrid` actually evaluated, machine-derived from the object holding
-every trial, never a literal. That satisfies "not hand-typed" but not
-"cumulative across runs": today's `N` is the trials in *this* report's scope, and a
-search spread over several sessions would undercount. `n_trials_source` records which
-regime produced the number so a reader is not left guessing.
+**Where `n_trials_raw` comes from.** B3 rule 3: `N` is read from the trials ledger and
+never hand-typed. `build_report` takes a `Ledger` and calls `n_trials(scope)`; there is
+no path through this module that invents an `N`, and a ledger reporting fewer trials
+than the grid it is asked to report on raises rather than deflating against a search
+smaller than the one it can see.
+
+It used to come from `grid.n_configs`. That was machine-derived, so it satisfied the
+letter of "not hand-typed", but a `StrategyGrid` knows only the configurations one call
+happened to hold -- so a search spread over several sessions reported the last session's
+width. With a file-backed ledger `N` outlives the process: every configuration ever
+evaluated within `scope` counts, which is the number a deflated Sharpe is supposed to be
+told. `n_trials_source` names the file and the filter, so the count is checkable rather
+than merely asserted.
+
+One consequence worth stating plainly: `N` grows. It is meant to. A project that keeps
+searching has searched more, and a deflated Sharpe that does not know this is the exact
+self-flattery this repository exists to measure.
 """
 
 from __future__ import annotations
@@ -47,6 +56,7 @@ from falsify.data.manifest import sha256_of
 from falsify.deflated import deflated_sharpe, min_backtest_length_years
 from falsify.effective import effective_trials
 from falsify.evaluation import StrategyGrid
+from falsify.ledger import Ledger, LedgerError, Scope
 from falsify.metrics import annualise_sharpe, elapsed_years, newey_west_t, sharpe
 
 Series = NDArray[np.float64]
@@ -282,6 +292,40 @@ def write_metrics(path: Path, report: MetricsReport) -> None:
     )
 
 
+def describe_source(ledger: Ledger, scope: Scope | None) -> str:
+    """Where `N` came from, written by the machine that read it. Deterministic (G10).
+
+    The field's job is that a reader can check the number rather than take it: it names
+    the file to open and the filter applied to it. The string this replaced said
+    "StrategyGrid", which named a Python object that stopped existing when the process
+    did -- true, and useless to anyone outside it.
+
+    An absolute path is reduced to its filename. Only tests pass one, and a published
+    `metrics.json` should not carry somebody's home directory.
+    """
+    if ledger.path is None:
+        where = "in-memory ledger, this process only"
+    elif ledger.path.is_absolute():
+        where = f"{ledger.path.name} (cumulative across runs)"
+    else:
+        where = f"{ledger.path.as_posix()} (cumulative across runs)"
+
+    if scope is None:
+        return f"{where}; scope: every live trial"
+    parts = []
+    if scope.strategies:
+        parts.append("strategies=" + "|".join(scope.strategies))
+    if scope.universe:
+        parts.append("universe=" + "|".join(scope.universe))
+    if scope.date_range is not None:
+        parts.append(f"dates={scope.date_range[0]}..{scope.date_range[1]}")
+    if scope.series_digest is not None:
+        parts.append(f"series={scope.series_digest}")
+    if scope.cost_bps is not None:
+        parts.append(f"cost_bps={scope.cost_bps:g}")
+    return f"{where}; scope: {', '.join(parts) if parts else 'unfiltered'}"
+
+
 def build_report(
     bars: Bars,
     returns: Series,
@@ -291,6 +335,8 @@ def build_report(
     rng: np.random.Generator,
     *,
     manifest_path: Path,
+    ledger: Ledger,
+    scope: Scope | None = None,
     n_boot: int = DEFAULT_N_BOOT,
     bars_per_year: int = BARS_PER_YEAR,
     repo: Path | None = None,
@@ -305,7 +351,29 @@ def build_report(
     `pbo` and `break_even_cost_bps` are passed in rather than computed. A full CSCV sweep
     and a cost sweep are both expensive and both have their own parameters; making this
     function run them would bury those choices inside a reporting call.
+
+    **`ledger` is required, and `N` comes from it.** B3 rule 3: `N` is read from the
+    trials ledger and never hand-typed. It used to come from `grid.n_configs`, which was
+    machine-derived and therefore satisfied the letter of "not hand-typed" -- but it
+    counted only the configurations this one call happened to hold, so a search spread
+    over several sessions reported the last session's width and deflated against that.
+    A file-backed ledger makes `N` cumulative: every configuration ever evaluated within
+    `scope` counts, which is the number the deflated Sharpe is supposed to be told.
+
+    `scope` narrows which trials count, and is how G6's thousand calibrated nulls stay
+    out of a real strategy's `N` while sharing one file. Passing `None` counts every
+    live trial in the ledger, which is right only when the ledger holds nothing else.
     """
+    n_trials = ledger.n_trials(scope)
+    if n_trials < grid.n_configs:
+        raise LedgerError(
+            f"the ledger reports {n_trials} trial(s) in scope but the grid holds "
+            f"{grid.n_configs} configurations. A report cannot deflate against a search "
+            "smaller than the one it can see: either a call site evaluated "
+            "configurations without recording them, or `scope` excludes trials it should "
+            "count. Under-reporting N is the direction that flatters the result, which "
+            "is why this raises rather than warns."
+        )
     annual = annualise_sharpe(sharpe(returns), bars_per_year)
     ci = bootstrap_ci(
         returns,
@@ -324,14 +392,14 @@ def build_report(
     return MetricsReport(
         sharpe_annual=annual,
         sharpe_ci95=(ci.lo, ci.hi),
-        n_trials_raw=grid.n_configs,
+        n_trials_raw=n_trials,
         n_trials_effective=eff.reportable,
         deflated_sharpe=deflated_sharpe(returns, trial_sharpes),
         pbo=pbo,
         # Only defined for a positive target: no sample length makes a non-positive
         # Sharpe significant, so the requirement is infinite rather than an error.
         min_backtest_length_years=(
-            min_backtest_length_years(grid.n_configs, annual) if annual > 0.0 else float("inf")
+            min_backtest_length_years(n_trials, annual) if annual > 0.0 else float("inf")
         ),
         actual_history_years=elapsed_years(bars.ts),
         break_even_cost_bps=break_even_cost_bps,
@@ -339,7 +407,7 @@ def build_report(
         git_sha=git_sha(repo),
         data_manifest_hash=manifest_hash(manifest_path),
         n_obs=int(returns.size),
-        n_trials_source="StrategyGrid (not the B3 ledger; scope is this run only)",
+        n_trials_source=describe_source(ledger, scope),
         ci_method="stationary bootstrap, percentile",
         ci_n_boot=n_boot,
     )
@@ -349,6 +417,7 @@ __all__ = [
     "UNKNOWN",
     "MetricsReport",
     "build_report",
+    "describe_source",
     "git_sha",
     "manifest_hash",
     "write_metrics",

@@ -80,6 +80,7 @@ def make_report(pieces: Pieces, seed: int = 1) -> MetricsReport:
         pbo,
         11.3,
         np.random.default_rng(seed),
+        ledger=LEDGER,
         manifest_path=MANIFEST,
         n_boot=N_BOOT,
     )
@@ -131,6 +132,7 @@ def test_g10_the_gate_can_fail(pieces: Pieces, tmp_path: Path) -> None:
             11.3,
             np.random.default_rng(1),
             manifest_path=MANIFEST,
+            ledger=LEDGER,
             n_boot=N_BOOT,
         ),
     )

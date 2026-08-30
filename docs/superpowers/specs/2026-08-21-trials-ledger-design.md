@@ -2,7 +2,33 @@
 
 **Date:** 2026-08-21
 **Implements:** `03` invariant B3, `01` Part C
-**Status:** approved, not yet implemented
+**Status:** implemented
+
+**Update 2026-08-30 — the reporting half landed.** This spec deliberately left
+`metrics.json` out of scope, so `build_report` derived `N` from `StrategyGrid.n_configs`
+for as long as the reporting contract existed: machine-derived, but scoped to one
+process, so a search spread over several sessions reported the last session's width.
+`build_report` now takes a `Ledger` and reads `n_trials(scope)`.
+
+Three things that fell out of doing it, none of them anticipated here:
+
+1. **The ledger is tracked, so writing to it dirtied the tree, and `git_sha` is part of
+   `trial_id` (rule 3).** Left alone that is a feedback loop: a write changes the SHA,
+   the changed SHA mints fresh ids for identical configurations, `N` climbs on every run
+   and two runs disagree — G10 with them. `git_sha` now excludes the ledger from its
+   dirty check, on the principle that it identifies the state of the *code* and the
+   ledger is output the code produced.
+2. **The Risks table anticipated a lint check for a reintroduced literal `N`.** It is a
+   runtime guard instead: `build_report` raises when the ledger reports fewer trials than
+   the grid it is reporting on. A lint pass cannot see a ledger that was simply never
+   written to.
+3. **`Scope` gained `cost_bps`.** A cost sweep records eight trials for one
+   configuration, correctly — but they are not eight candidates anything was selected
+   from, and a deflated Sharpe wants the width of the choice.
+
+Also found while wiring it: `n_trials(scope)` on a `Recording.NONE` in-memory ledger
+answered `0` rather than refusing, because `NONE` keeps no rows to filter. Zero
+under-reports `N`, and under-reporting `N` deflates less. It raises now.
 
 ---
 

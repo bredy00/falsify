@@ -41,7 +41,7 @@ test:
 	$(RUN) pytest
 
 gates:
-	$(RUN) pytest tests -v -n auto -m "not live" --min-collected=465
+	$(RUN) pytest tests -v -n auto -m "not live" --min-collected=475
 
 live:
 	$(RUN) pytest tests/live -v -s -m live

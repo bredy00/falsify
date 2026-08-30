@@ -104,7 +104,7 @@ uv sync --all-groups
 uv run pytest -n auto -m "not live"
 ```
 
-**475 tests, 0 skipped.** This is the argument, not a smoke test: the causality τ-test,
+**482 tests, 0 skipped.** This is the argument, not a smoke test: the causality τ-test,
 twin-engine agreement, null calibration, PBO via CSCV, and byte-level reproducibility all
 run here. CI averages **49.3 s ± 1.9 (SE)** for lint, typecheck and gates together.
 
@@ -163,9 +163,12 @@ means a green build.
 - **Every number carries an error bar.** Sharpe with its standard error, Newey–West HAC
   *t*-statistics with automatic lag selection, and stationary-bootstrap confidence intervals
   (Politis–Romano). A point estimate with no interval does not reach the reporting layer.
-- **The search is counted by machine.** An append-only trials ledger records every engine
-  invocation under a content-addressed id, so the number of configurations tried is read off
-  the ledger rather than asserted by a human who might round it down.
+- **The search is counted by machine, and the count outlives the process.** Every engine
+  invocation appends to `data/trials.jsonl` under a content-addressed id, and the report
+  reads `N` back out of that file rather than from the grid in front of it. So a search
+  spread over five sessions deflates by all five. The ledger ships in the repository: the
+  `N` behind the headline is a file you can open and count. Re-running a finished search
+  adds nothing — same code, same data, same parameters, same address.
 - **Overfitting is measured, not assumed.** Combinatorially symmetric cross-validation gives
   the probability of backtest overfitting; the Deflated Sharpe Ratio prices the search that
   produced the number. Both are reported whatever they say — here, **0.821** and **0.000**.
@@ -493,7 +496,7 @@ Numeric output and the figure's bytes are identical across two runs at the same 
 
 ## Gate status — all ten green
 
-**475 tests, 0 skipped**, entirely offline, plus **20 live tests** against the pinned
+**482 tests, 0 skipped**, entirely offline, plus **20 live tests** against the pinned
 cache. `make ci` runs exactly what CI runs.
 
 **Timings carry error bars, including this project's own.** Over 14 successful runs CI

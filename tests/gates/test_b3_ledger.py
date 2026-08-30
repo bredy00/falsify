@@ -14,6 +14,7 @@ guard the properties those two depend on.
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 import numpy as np
@@ -22,7 +23,7 @@ import pytest
 from falsify.core.vectorized import run_vectorized
 from falsify.costs import ZERO_COST, CostModel
 from falsify.evaluation import build_grid
-from falsify.ledger import Ledger, Recording, Scope
+from falsify.ledger import Ledger, LedgerError, Recording, Scope, git_sha
 from falsify.strategies.simple import BuyAndHold, CausalZScore, MACrossover
 from falsify.synthetic import bars_from_close, gbm
 
@@ -234,3 +235,120 @@ def test_b3_scope_separates_a_null_study_from_the_search_being_reported(
     assert ledger.n_trials(Scope(strategies=("CausalZScore",))) == 4
     assert ledger.n_trials(Scope(strategies=("MACrossover", "CausalZScore"))) == 7
     assert ledger.n_trials(Scope(strategies=("BuyAndHold",))) == 0
+
+
+# --------------------------------------------------------------------------------------
+# `N` reaches the report from the ledger, and survives the process that produced it.
+# --------------------------------------------------------------------------------------
+
+
+def test_b3_n_is_cumulative_across_sessions(bars: object, tmp_path: Path) -> None:
+    """Two processes, one file. The second must see the first one's search.
+
+    This is the property that makes a file-backed ledger worth having. A researcher who
+    sweeps twelve configurations on Monday and twelve more on Tuesday has searched
+    twenty-four times, and a Tuesday report that deflates by twelve is describing a
+    search that did not happen. Each `Ledger` here stands for a separate run: they share
+    only the path, exactly as two invocations of `scripts/report.py` would.
+    """
+    path = tmp_path / "trials.jsonl"
+
+    monday = Ledger(path=path, recording=Recording.TRIALS)
+    build_grid(bars, [MACrossover(f, 60) for f in (5, 10, 15)], ZERO_COST, ledger=monday)  # type: ignore[arg-type]
+    assert monday.n_trials() == 3
+
+    tuesday = Ledger(path=path, recording=Recording.TRIALS)
+    build_grid(bars, [MACrossover(f, 90) for f in (5, 10, 15)], ZERO_COST, ledger=tuesday)  # type: ignore[arg-type]
+
+    assert tuesday.n_trials() == 6, (
+        "a second run read back only its own trials. `N` that resets per process is `N` "
+        "that shrinks every time you restart, and shrinking `N` inflates the deflated "
+        "Sharpe -- the exact direction that flatters a result."
+    )
+
+    # And a third run that repeats Monday's sweep adds nothing: same code, same data,
+    # same params, so the same content addresses.
+    wednesday = Ledger(path=path, recording=Recording.TRIALS)
+    build_grid(bars, [MACrossover(f, 60) for f in (5, 10, 15)], ZERO_COST, ledger=wednesday)  # type: ignore[arg-type]
+    assert wednesday.n_trials() == 6, "re-running a finished search counted it twice"
+
+
+def test_b3_recording_a_trial_does_not_change_the_code_identity(tmp_path: Path) -> None:
+    """The ledger is tracked, so appending to it marks the tree dirty -- and `git_sha`
+    must not see that.
+
+    Left alone this is a feedback loop with teeth: a write dirties the tree, the dirty
+    tree changes the SHA, the changed SHA is part of `trial_id`, so the next run mints
+    fresh ids for the identical configuration. `N` would climb on every run and two runs
+    would disagree, taking G10 with them. `git_sha` identifies the state of the code; the
+    ledger is output the code produced.
+    """
+    repo = tmp_path / "repo"
+    (repo / "data").mkdir(parents=True)
+    (repo / "code.py").write_text("x = 1\n", encoding="utf-8")
+    (repo / "data" / "trials.jsonl").write_text("", encoding="utf-8")
+
+    def git(*args: str) -> None:
+        subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True)
+
+    git("init", "-q")
+    git("config", "user.email", "t@example.com")
+    git("config", "user.name", "t")
+    git("add", "-A")
+    git("commit", "-qm", "initial")
+
+    git_sha.cache_clear()
+    clean = git_sha(repo)
+    assert not clean.endswith("-dirty"), "fixture repo did not start clean"
+
+    # A trial lands in the ledger.
+    (repo / "data" / "trials.jsonl").write_text('{"trial_id":"x"}\n', encoding="utf-8")
+    git_sha.cache_clear()
+    assert git_sha(repo) == clean, (
+        "recording a trial changed the code identity. Every subsequent run would mint "
+        "new trial ids for configurations it had already evaluated."
+    )
+
+    # An actual source change still must.
+    (repo / "code.py").write_text("x = 2\n", encoding="utf-8")
+    git_sha.cache_clear()
+    assert git_sha(repo).endswith("-dirty"), (
+        "a real source edit no longer marks the tree dirty; the exclusion is too wide"
+    )
+    git_sha.cache_clear()
+
+
+def test_b3_a_scoped_count_on_a_none_ledger_refuses_rather_than_answering_zero() -> None:
+    """`NONE` keeps no rows, so it cannot filter them -- and 0 is the dangerous answer.
+
+    Returning 0 would under-report `N`, and under-reporting `N` deflates less, which
+    makes a result look more significant than the search behind it justifies. Silence in
+    the flattering direction is the one failure this project must not have.
+    """
+    ledger = Ledger.memory(Recording.NONE)
+    with pytest.raises(LedgerError, match="retains no rows"):
+        ledger.n_trials(Scope(strategies=("MACrossover",)))
+    assert ledger.n_trials() == 0  # unscoped still answers
+
+
+def test_b3_scope_separates_a_cost_sweep_from_the_search(bars: object, tmp_path: Path) -> None:
+    """Eight cost levels on one configuration are eight trials and one candidate.
+
+    They belong in the ledger -- they were evaluated. They do not belong in the `N` a
+    deflated Sharpe is told, which wants the width of the choice rather than the count of
+    the runs.
+    """
+    ledger = Ledger(path=tmp_path / "trials.jsonl", recording=Recording.TRIALS)
+    for bps in (0.0, 1.0, 2.0, 5.0):
+        run_vectorized(
+            bars,  # type: ignore[arg-type]
+            MACrossover(10, 60),
+            CostModel(commission_bps=bps),
+            CAPITAL,
+            "next_open",
+            ledger=ledger,
+        )
+    assert ledger.n_trials() == 4, "the sweep should record every level it evaluated"
+    assert ledger.n_trials(Scope(cost_bps=0.0)) == 1, (
+        "scoping to the reported cost should leave one candidate, not the whole sweep"
+    )
