@@ -5,6 +5,8 @@ number survived the search that produced it.
 
 It was built to be capable of returning a negative answer about its own strategy. It does.
 
+[![gates](https://github.com/bredy00/falsify/actions/workflows/gates.yml/badge.svg)](https://github.com/bredy00/falsify/actions/workflows/gates.yml)
+
 ---
 
 ## What this is
@@ -213,11 +215,11 @@ arrives:
 
 ```python
 CostModel(
-    commission_bps=...,      # per side
-    half_spread_bps=...,     # crossing the book
-    slippage_bps=...,        # market impact
-    borrow_bps_annual=...,   # the cost of being short
-    cash_yield_annual=...,   # what idle cash earns
+    commission_bps=...,  # per side
+    half_spread_bps=...,  # crossing the book
+    slippage_bps=...,  # market impact
+    borrow_bps_annual=...,  # the cost of being short
+    cash_yield_annual=...,  # what idle cash earns
 )
 ```
 
@@ -710,3 +712,13 @@ Open access: https://www.ams.org/notices/201405/rnoti-p458.pdf
 
 The two PDFs here are original exposition written to accompany that paper. They reproduce none
 of it. Read the original.
+
+---
+
+## License
+
+MIT — see [LICENSE](LICENSE). Use it, fork it, copy the parts you want.
+
+The two PDFs and `docs/research-note.md` are original writing and fall under the same terms.
+The Bailey–Borwein–López de Prado–Zhu paper they discuss is not mine to license; read it at
+the link above.

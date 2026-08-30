@@ -3,6 +3,8 @@ name = "falsify"
 version = "0.1.0"
 description = "A backtester that reports an estimate, its error bar, and the probability the number survived the search that produced it."
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "numpy>=2.0",
