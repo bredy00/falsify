@@ -80,6 +80,115 @@ factor attribution, limitations, and what would have to be true for this to be t
 
 ---
 
+## Why your backtest is probably wrong
+
+The verdict above is not a bug report about that strategy. It is the ordinary outcome, and
+a reader who runs their own idea through this engine and gets a negative answer has not
+found a defect — they have found the base rate. This section is why.
+
+![What searching costs](docs/figures/search_cost.png)
+
+### The poker frame
+
+A backtest reports an unconditional number: *this rule earns 0.61 Sharpe*. Markets never
+hand you unconditional numbers. They hand you one path, and the rule's true expectation is
+a property of the distribution that path was drawn from — which you do not observe and
+cannot sample twice.
+
+Poker is the same shape of problem, which is why it is the better intuition than the coin
+flip everyone reaches for. You push, he folds. Was he folding a monster or air? The hand
+is over and the cards are mucked; the question is about his distribution, and you got one
+draw from it. Play the hand ten thousand times and the distribution shows up. Play it once
+and you have an anecdote with a number attached.
+
+Annie Duke calls the error **resulting** — grading a decision by its outcome rather than by
+the decision. A backtest is resulting at industrial scale. It grades a rule by the single
+path history happened to take, then reports the grade to four decimal places.
+
+The **win/loss ratio** makes this concrete, and it is panel 4 above. If wins and losses
+were symmetric draws from one distribution, the ratio would sit near 1 and tell you
+something. It never does, because strategies are not symmetric: a player folding eighty
+percent of hands has a lopsided record and may be printing money or bleeding it, and you
+cannot tell which from the ratio. The two marked strategies in panel 4 — a trend follower
+hitting 35% of the time and a mean reverter hitting 70% — have **exactly zero edge, both of
+them**. Every point on that black curve does. "My win rate is 65%" describes the shape of a
+payoff. It is not a claim about edge, and it is not evidence of one.
+
+### Four objections, priced
+
+Everything in the figure is a property of arithmetic rather than of any market. None of it
+depends on which instrument you picked, and all of it is reproducible offline:
+
+```bash
+uv run python scripts/search_cost.py
+```
+
+**"But my best configuration made money."** So does the best of N strategies that have no
+edge whatsoever. On four years of daily data, the best of 100 pure-noise strategies earns
+an annualised Sharpe of **1.26**; the best of 800 earns **1.59**. Panel 1 shows the
+simulated distribution — 20,000 draws per point — against the closed form, and they agree.
+Report 1.4 on a grid of 800 and you underperformed randomness.
+
+**"My Sharpe was 1.5, that's significant."** As a single hypothesis, yes: deflated, it
+stands at 0.99. Panel 2 holds that 1.5 fixed and varies only the search behind it. At 100
+configurations it is **0.68**. At 800, **0.42** — worse than a coin flip. The number in the
+pitch deck did not change. What changed is what you admitted about how you found it.
+
+**"Then I need a better strategy."** Or more history than exists. Panel 3 is the sample
+length that significance would actually require, and the quadratic bites: halving the
+Sharpe you are willing to accept quadruples the history you need. Chasing a Sharpe of 0.5
+across 1,000 configurations needs **42 years** of daily data. This repository's own
+strategy needs **10.7 years** and has 9.6 — it falls short on its own terms, by about a
+year, and says so in `metrics.json` under `interpretable: false`.
+
+**"Fine — I'll iterate until it works."** This is the one that gets people, because it
+feels like diligence. Every fix is a trial. Every re-run with a tweaked threshold is a
+trial. The search that improves the number is the same search that invalidates it, and
+because nobody writes down the failed attempts, `N` in everyone's head is 1. That is
+exactly what the ledger in this repository exists to stop: `data/trials.jsonl` counts what
+you actually ran, not what you remember running, and it survives the process so tomorrow's
+session cannot forget yesterday's.
+
+Negative expected value is not the surprising result. It is the default, and a backtester
+that cannot return it is not measuring anything.
+
+### The literature
+
+None of this is novel, and that is the point — it has been in print for decades and is
+still routinely ignored. Details below are given as author, year and journal; the one
+result this repository actually reproduces is the first, cited in full at the end of this
+file.
+
+- **Bailey, Borwein, López de Prado & Zhu (2014)**, *Pseudo-Mathematics and Financial
+  Charlatanism*, Notices of the AMS. Minimum backtest length and the expected maximum
+  Sharpe under selection. Gate 0.0 reproduces its Propositions 3 and 5 from a seed on this
+  machine rather than quoting them.
+- **Bailey & López de Prado (2014)**, *The Deflated Sharpe Ratio*, Journal of Portfolio
+  Management. The correction in panel 2.
+- **Harvey, Liu & Zhu (2016)**, *…and the Cross-Section of Expected Returns*, Review of
+  Financial Studies. Hundreds of published factors, one multiple-testing correction, and
+  the conclusion that a *t* of 2.0 is nowhere near enough for a new one — they argue for
+  roughly 3.0.
+- **Harvey & Liu (2015)**, *Backtesting*, Journal of Portfolio Management. How much to
+  haircut a reported Sharpe given the search behind it.
+- **Sullivan, Timmermann & White (1999)**, *Data-Snooping, Technical Trading Rule
+  Performance, and the Bootstrap*, Journal of Finance, and **White (2000)**, *A Reality
+  Check for Data Snooping*, Econometrica. The bootstrap machinery for asking whether the
+  best rule in a universe beats the best rule you would expect from noise.
+- **Politis & Romano (1994)**, *The Stationary Bootstrap*, JASA. The resampler in
+  `falsify/bootstrap.py`, chosen because block length has to be random or the intervals
+  inherit the block boundary.
+- **López de Prado (2018)**, *Advances in Financial Machine Learning*, Wiley. Book-length
+  treatment; the chapters on backtest overfitting and CSCV are the direct ancestors of G8
+  and G9 here.
+- **Ioannidis (2005)**, *Why Most Published Research Findings Are False*, PLoS Medicine.
+  The same argument outside finance, and the reason to suspect the problem is not a quirk
+  of markets.
+- **Duke (2018)**, *Thinking in Bets*, Portfolio. Where *resulting* comes from, and the
+  most readable statement of why a good outcome is not evidence of a good decision.
+
+---
+
 ## Quickstart
 
 Python **3.12** and [uv](https://docs.astral.sh/uv/). Steps 1–4 make no network call and
@@ -142,7 +251,8 @@ verifies. Then `make tearsheet` and `make surface` regenerate the two figures be
 |---|---|
 | `make ci` | lint + typecheck + gates, exactly as CI runs them |
 | `make prop` | Gate 0.0 with printed statistics and its figure |
-| `make reproduce` | assert two runs are byte-identical |
+| `make reproduce` | G10: regenerate the two offline figures twice and assert the bytes match |
+| `make search-cost` | the four-panel figure above, on its own |
 | `make report-pdf` | the project board as a PDF |
 | `make g9-figure` | PBO against selection temperature at all 12,870 splits — minutes, not seconds |
 | `make clean` | drop caches and `outputs/` |

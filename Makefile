@@ -1,7 +1,7 @@
 # falsify -- entry points. CI runs these same targets, so a green `make ci`
 # locally means a green build (Phase 0, PLAYBOOK Part 4).
 
-.PHONY: help install lint fmt fmt-check typecheck test gates prop ci reproduce clean g9-figure report report-pdf tearsheet surface
+.PHONY: help install lint fmt fmt-check typecheck test gates prop ci reproduce clean g9-figure report report-pdf tearsheet surface search-cost
 
 RUN := uv run
 
@@ -18,6 +18,7 @@ help:
 	@echo "report-pdf  the project board as a PDF"
 	@echo "tearsheet   Phase 8 tearsheet (needs the cache)"
 	@echo "surface     in-sample vs out-of-sample parameter surface (needs the cache)"
+	@echo "search-cost what searching costs -- offline, seeded, in reproduce"
 	@echo "ci          lint + typecheck + gates, exactly as CI runs them"
 	@echo "report      write outputs/metrics.json (01 Part D contract)"
 	@echo "reproduce   G10: assert two runs are byte-identical"
@@ -66,6 +67,10 @@ tearsheet:
 surface:
 	$(RUN) python scripts/parameter_surface.py
 
+# Offline and seeded, so unlike the two above it belongs to `make reproduce`.
+search-cost:
+	$(RUN) python scripts/search_cost.py
+
 # G9's headline figure, at the full C(16,8) = 12,870 splits. Minutes, not seconds --
 # the CI gate runs C(10,5) on purpose.
 g9-figure:
@@ -89,17 +94,26 @@ verify-ci:
 	   || (echo "verify-ci: HEAD has no successful completed run"; exit 1)
 
 # G10. Two runs from the same seeds must produce byte-identical figures.
-# Currently covers Gate 0.0's figure; extends to metrics.json when the
-# reporting layer lands (Phase 8).
+#
+# Hashes only the figures this target actually REGENERATES. It used to hash
+# docs/figures/*.png, which looked like five figures of coverage and was one:
+# the other four are built from the SPY cache, were never rebuilt here, and so
+# matched themselves trivially. A gate that passes by comparing a file to itself
+# is worse than none, because it reports confidence it did not earn.
+#
+# The metrics half of G10 is in tests/gates/test_g10_reproducibility.py, which
+# needs no figure and runs inside the gate suite.
+REPRODUCIBLE := docs/figures/compensation_effect.png docs/figures/search_cost.png
+
 reproduce:
 	@mkdir -p outputs
 	@$(RUN) pytest tests/gates/test_prop.py -q
-	@sha256sum docs/figures/*.png > outputs/reproduce-1.sha256
+	@$(RUN) python scripts/search_cost.py > /dev/null
+	@sha256sum $(REPRODUCIBLE) > outputs/reproduce-1.sha256
 	@$(RUN) pytest tests/gates/test_prop.py -q
-	@sha256sum docs/figures/*.png > outputs/reproduce-2.sha256
-	@diff outputs/reproduce-1.sha256 outputs/reproduce-2.sha256 \
-		&& echo "reproduce: byte-identical across two runs" \
-		|| (echo "reproduce: FAILED -- output is not deterministic"; exit 1)
+	@$(RUN) python scripts/search_cost.py > /dev/null
+	@sha256sum $(REPRODUCIBLE) > outputs/reproduce-2.sha256
+	@diff outputs/reproduce-1.sha256 outputs/reproduce-2.sha256 \n		&& echo "reproduce: byte-identical across two runs" \n		|| (echo "reproduce: FAILED -- output is not deterministic"; exit 1)
 
 clean:
 	rm -rf .pytest_cache .mypy_cache .ruff_cache outputs
