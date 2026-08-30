@@ -7,6 +7,49 @@ It was built to be capable of returning a negative answer about its own strategy
 
 ---
 
+## What this is
+
+Most backtesters answer *"what would this strategy have returned?"* That question has a
+number for an answer, and the number is nearly always too high — because it is the best of
+however many variants were tried, and almost nobody writes down how many they tried.
+
+falsify answers a different question: **is this number distinguishable from what searching
+would have produced anyway?** Every part of the engine exists to make that question
+answerable, which means the pipeline is built to fail and to report the failure rather than
+to produce a curve that goes up.
+
+You hand it a price series and a strategy that emits target weights. It hands back an equity
+curve, an annualised Sharpe **with a confidence interval**, a Newey–West *t*-statistic that
+does not pretend your returns are independent, the number of configurations the search
+actually evaluated, that Sharpe deflated by that number, the probability of backtest
+overfitting, and a four-factor decomposition saying how much of the return was exposure a
+reader could have bought for a few basis points. Then two booleans, `interpretable` and
+`ships`. For the strategy this repository ships with, both are `false`, and the README leads
+with that rather than burying it.
+
+### How you would use it
+
+1. **Write a strategy.** Subclass `Strategy` and return a target weight in [−1, 1] per bar —
+   not orders, not trades. Declare its `lookback` rather than letting the engine infer one.
+   Sizing, cost accounting and compounding are the engine's job, and keeping them out of
+   strategy code is what makes two strategies comparable at all.
+2. **Run it against a benchmark on the same window.** `BuyAndHold` is the thing a reader
+   could have bought instead. Warm-up is sliced before anything compounds, so both curves
+   start from the same base by construction rather than by care.
+3. **Sweep the parameters you were going to sweep anyway** — and let the ledger count them.
+   Every engine invocation is recorded whether or not you meant it as a trial, so `N` is what
+   you actually did, not what you remember doing.
+4. **Read the verdict, not the Sharpe.** If the deflated Sharpe is ≈ 0 and PBO is above 0.5,
+   the headline number is selection. That is the whole point of the machine, and it is the
+   answer it returns about its own strategy.
+
+**What it is not.** It is not a live trading system, an order router, or a portfolio
+optimiser. There is no broker integration and there will not be one. It sizes positions as
+weights and stops at the point where a real desk would begin — which is deliberate, because
+the failure it exists to catch happens well before execution.
+
+---
+
 ## The result
 
 `TimeSeriesMomentum(12m, 1m)` on SPY, 2015–2024, zero cost:
@@ -135,6 +178,62 @@ means a green build.
 - **Real prices, verified on every read.** Daily bars from Yahoo Finance via `yfinance`,
   cached as parquet and checked against a committed manifest. The gate suite never touches
   the network, by invariant and by test.
+
+### Engine properties
+
+| | |
+|---|---|
+| **Strategies emit weights** | A target weight in [−1, 1] per bar. Orders, fills and cost accounting belong to the engine (B4). A strategy that emits orders cannot be run through both engines, so it cannot be certified. |
+| **Lookback is declared, not inferred** | The event engine slices exactly the bars a strategy says it needs. One that silently reads further back produces NaN and fails loudly. |
+| **Frozen results** | `Bars`, `Result` and the cost model are frozen dataclasses (B7). There is exactly one state to compare, which is what makes the twin-engine check mean anything. |
+| **Per-observation internally, annualised at the edge** | Sharpe, its standard error and the HAC correction are computed per bar; the ×√252 happens once, at the reporting boundary (B8). |
+| **Seeds are arguments, never globals** | Every stochastic path takes an explicit `np.random.Generator` (B9). This is why two runs are byte-identical rather than merely close. |
+| **Warm-up is sliced, not compounded** | `equity[0] == initial_capital` exactly, so a benchmark over the same window starts from the same number. |
+| **No `bfill`, anywhere** | Backward-filling an interior gap carries a future price into the past. A gap stays NaN and `Bars` refuses to construct (B6). |
+
+### Execution schemes
+
+When you trade is a parameter, not an assumption — the choice is worth real return, and
+leaving it implicit is how a backtest flatters itself. A signal decided at the close of bar
+*s*:
+
+| convention | fills at | lag | |
+|---|---|---|---|
+| `close_to_close` | close of *s* | 1 | optimistic — trades the price it just observed |
+| **`next_open`** | open of *s+1* | 2 | **the default.** Realistic, and it costs you |
+| `next_close` | close of *s+1* | 2 | conservative — carries the full overnight gap |
+
+Both engines must answer *at what price* and *how many bars later* identically, or G2 fails.
+
+### Cost model
+
+Multiplicative on **traded notional**, not additive on portfolio return. The distinction is
+invisible while positions are 0/1 and fully allocated, and wrong the moment vol targeting
+arrives:
+
+```python
+CostModel(
+    commission_bps=...,      # per side
+    half_spread_bps=...,     # crossing the book
+    slippage_bps=...,        # market impact
+    borrow_bps_annual=...,   # the cost of being short
+    cash_yield_annual=...,   # what idle cash earns
+)
+```
+
+That last field exists because a long-or-cash strategy sits in cash roughly half the time.
+Crediting it 0% misstates the equity curve and the Sharpe in opposite directions at once.
+
+### Strategies included
+
+Single-asset `Strategy` implementations: `BuyAndHold` · `MACrossover` · `CausalZScore` ·
+`TimeSeriesMomentum` · `Flat` · `RandomSign`, the calibrated null the whole null-testing
+apparatus rests on. `VolTarget` and `TurnoverBuffer` compose on top of any of them.
+
+Cross-sectional long/short runs through a separate panel API — `run_panel` over N aligned
+assets, ranked into a long and a short leg — rather than as a `Strategy`, because a weight
+per bar and a weight per asset per bar are different contracts and collapsing them would
+make the twin-engine check meaningless.
 
 ---
 
