@@ -21,9 +21,10 @@ from `git_sha` and `data_manifest_hash` instead, which are content-derived: they
 when and only when the inputs change, which is what provenance is actually for.
 
 **Where `n_trials_raw` comes from, and its current limit.** B3 says `N` is read from the
-trials ledger and never hand-typed. The ledger is specified but not yet built, so this
-takes `N` from the `StrategyGrid` actually evaluated -- machine-derived from the object
-holding every trial, never a literal. That satisfies "not hand-typed" but not yet
+trials ledger and never hand-typed. The ledger exists -- `falsify/ledger.py`, gated by
+`tests/gates/test_b3_ledger.py` -- but `build_report` does not read from it yet: it takes
+`N` from the `StrategyGrid` actually evaluated, machine-derived from the object holding
+every trial, never a literal. That satisfies "not hand-typed" but not
 "cumulative across runs": today's `N` is the trials in *this* report's scope, and a
 search spread over several sessions would undercount. `n_trials_source` records which
 regime produced the number so a reader is not left guessing.
@@ -338,7 +339,7 @@ def build_report(
         git_sha=git_sha(repo),
         data_manifest_hash=manifest_hash(manifest_path),
         n_obs=int(returns.size),
-        n_trials_source="StrategyGrid (B3 ledger not yet built; scope is this run only)",
+        n_trials_source="StrategyGrid (not the B3 ledger; scope is this run only)",
         ci_method="stationary bootstrap, percentile",
         ci_n_boot=n_boot,
     )
