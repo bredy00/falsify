@@ -45,6 +45,11 @@ live:
 prop:
 	$(RUN) pytest tests/gates/test_prop.py -v -s
 
+# outputs/metrics.json -- 01 Part D's reporting contract. Deterministic: fixed seeds,
+# no wall-clock field, provenance from the git SHA and the manifest digest.
+report:
+	$(RUN) python scripts/report.py
+
 # The project board: gate table, invariants, checklists, measurements.
 report-pdf:
 	$(RUN) --group docs python scripts/board_report.py
