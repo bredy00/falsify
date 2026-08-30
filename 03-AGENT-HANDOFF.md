@@ -39,7 +39,7 @@ Violating any of these is a build failure, not a style preference. Do not "impro
 
 **B5. Both engines implement the Part E equations identically.** Changing an equation means changing it in two places and re-running G2 in the same commit. Never one without the other.
 
-**B6. No fills in the feature layer beyond declared forward-fill.** `bfill` anywhere in the pipeline is an automatic revert. It is the leak in the reference repo.
+**B6. No fills in the feature layer beyond declared forward-fill.** `bfill` anywhere in the pipeline is an automatic revert. It is the leak in the naive baseline.
 
 **B7. Frozen dataclasses.** No in-place mutation of `Bars` or `Result`. If a function needs a modified copy, it constructs one.
 
@@ -207,7 +207,7 @@ Each records the rationale and the condition under which it should be revisited.
 | 1 | **Universe: SPY only for v1.** | Single ticker removes survivorship bias entirely as a confound, which keeps the statistical argument clean. The cross-sectional work is Phase 8+. | The engine is certified and you want factor attribution. |
 | 2 | **`N_eff` via participation ratio.** `N_eff = (Σλ)²/Σλ²` on the trial correlation matrix. | No threshold to justify, and the source paper itself recommends dimension reduction for non-independent trials. Report clustering as a secondary estimate only. | The two estimates diverge by more than 2×; then report the smaller and say why. |
 | 3 | **Bootstrap `p = 1/√T`.** | Mean block length √T. Sensitivity across `{T^(-1/3), T^(-1/2), T^(-2/3)}` still gets reported. | CI width moves >20% across that range. |
-| 4 | **Risk-free: constant, set to the period mean of 3-month T-bills.** | The cash-yield term must exist (that's the reference repo's omission), but a full T-bill path is Phase 8 polish. Record the constant used in the manifest. | Comparing across regimes with very different rate levels. |
+| 4 | **Risk-free: constant, set to the period mean of 3-month T-bills.** | The cash-yield term must exist (that's the naive baseline's omission), but a full T-bill path is Phase 8 polish. Record the constant used in the manifest. | Comparing across regimes with very different rate levels. |
 | 5 | **Repo name: `falsify`.** | Matches the thesis — the engine's job is to try to kill the strategy. | Never. Pick it and move. |
 
 If a genuinely new ambiguity appears, flag it. Do not re-litigate the five above.

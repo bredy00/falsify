@@ -133,7 +133,7 @@ Run the engine on each of these and assert the specified behaviour:
 | All-zero returns | Sharpe `NaN`, MDD `0.0`, CAGR `0.0` |
 | Position array containing `NaN` | raises before the equity curve is computed |
 
-The reference repo returns `0.0` when the standard deviation is zero. A zero Sharpe and an undefined Sharpe are different claims and only one of them is true.
+The naive baseline returns `0.0` when the standard deviation is zero. A zero Sharpe and an undefined Sharpe are different claims and only one of them is true.
 
 ### 0.5 — Determinism
 

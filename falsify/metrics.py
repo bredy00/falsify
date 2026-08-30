@@ -32,7 +32,7 @@ def sharpe(returns: Series, risk_free_per_bar: float = 0.0) -> float:
 
     Unit: per bar. Returns NaN when the sample has no dispersion -- a zero Sharpe
     and an undefined Sharpe are different claims and only one of them is true
-    (Gate 0.4). The reference repo returns 0.0 here.
+    (Gate 0.4). The naive baseline returns 0.0 here.
     """
     if len(returns) < 2:
         return float("nan")
@@ -165,7 +165,7 @@ def annualised_vol(returns: Series, bars_per_year: int = BARS_PER_YEAR) -> float
 def elapsed_years(ts: NDArray[np.datetime64]) -> float:
     """Calendar years between the first and last timestamp.
 
-    Elapsed time, not `len(bars) / 252`. The reference repo divides by a nominal
+    Elapsed time, not `len(bars) / 252`. The naive baseline divides by a nominal
     bar count, so every holiday-heavy stretch silently inflates the annualisation.
     """
     span = (ts[-1] - ts[0]) / np.timedelta64(1, "D")

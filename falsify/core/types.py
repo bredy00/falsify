@@ -90,8 +90,8 @@ class Result:
     """One engine run over the *reported* window. Frozen (B7).
 
     Every array is the same length and covers the window after warm-up, sliced
-    before anything is compounded. That ordering is the fix for the reference
-    repo's benchmark bug: it compounds the market through the warm-up while the
+    before anything is compounded. That ordering is the fix for the naive
+    baseline's benchmark bug: it compounds the market through the warm-up while the
     strategy curve restarts, then plots the two against different bases. Slice
     first, compound second -- so `equity[0] == initial_capital` exactly, and a
     benchmark built on the same window starts at the same number.

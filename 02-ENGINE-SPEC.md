@@ -22,7 +22,7 @@ Exactly right. The index is called the **causality cut**, written `τ`.
 
 Everything at index `s ≤ τ` must be invariant to arbitrary mutilation of everything at `s > τ`. In physics terms: the signal at `τ` depends only on the past light cone. In code terms: if you can change the future and the past moves, you have leakage.
 
-### A2. One correction to what you said about the reference repo
+### A2. One correction to what you said about the naive baseline
 
 You wrote: *"there is clear leakage from what this guy wrote."* Half true, and the half that's wrong matters for where you spend effort.
 
@@ -124,7 +124,7 @@ class Result:
     turnover: np.ndarray  # |Δw| per bar
 ```
 
-`frozen=True` is load-bearing. The reference repo mutates `self.df` in place across a dozen assignments, which means the object's meaning depends on how far through the method you are. Frozen dataclasses make the twin-engine comparison meaningful, because there is exactly one state to compare.
+`frozen=True` is load-bearing. The naive baseline mutates `self.df` in place across a dozen assignments, which means the object's meaning depends on how far through the method you are. Frozen dataclasses make the twin-engine comparison meaningful, because there is exactly one state to compare.
 
 ---
 
@@ -161,7 +161,7 @@ Decide once, write it in the README, expose it as a flag.
 | `next_open` | close of `t` | open of `t+1` | realistic, the default |
 | `next_close` | close of `t` | close of `t+1` | conservative, full overnight gap risk |
 
-**Default: `next_open`.** The reference repo implicitly uses `close_to_close` with a one-bar shift, which is defensible for daily data but flatters the result.
+**Default: `next_open`.** The naive baseline implicitly uses `close_to_close` with a one-bar shift, which is defensible for daily data but flatters the result.
 
 **Produce the comparison figure.** Run the identical strategy under all three and plot the three equity curves. The spread between them is your execution-assumption risk, and quantifying it is worth more than any single number. On daily equities expect the gap between `close_to_close` and `next_open` to be material for high-turnover strategies and negligible for low-turnover ones — which is itself a useful diagnostic.
 
@@ -183,7 +183,7 @@ turnover[t] = |w[t] − w[t−1]|
 cost[t] = turnover[t] · equity[t−1] · (commission_bps + half_spread_bps + slippage_bps) / 10_000
 ```
 
-The reference repo charges `turnover × cost_rate` as a *return* deduction. Equivalent only while positions are 0/1 and fully allocated. It breaks the moment you add vol targeting, which you will.
+The naive baseline charges `turnover × cost_rate` as a *return* deduction. Equivalent only while positions are 0/1 and fully allocated. It breaks the moment you add vol targeting, which you will.
 
 **Gross return** with cash yield on the unallocated fraction and borrow on shorts:
 
@@ -210,7 +210,7 @@ Not `net = gross − cost_rate`. The additive form is a first-order approximatio
 bench[t] = bench[t−1] · (1 + r[t]),    bench[t_0] = initial_capital
 ```
 
-`t_0` is the first bar of the *reported* window, after warm-up removal. This is the reference repo's benchmark bug: it compounds through the warm-up while the strategy curve restarts. Slice first, compound second. Assert `equity[0] == bench[0] == initial_capital` as a unit test.
+`t_0` is the first bar of the *reported* window, after warm-up removal. This is the naive baseline's benchmark bug: it compounds through the warm-up while the strategy curve restarts. Slice first, compound second. Assert `equity[0] == bench[0] == initial_capital` as a unit test.
 
 ---
 

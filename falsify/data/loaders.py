@@ -9,8 +9,8 @@ The pipeline stages, and the rule each one obeys:
     cache     parquet, keyed on (ticker, start, end, adjustment)
     manifest  sha256 written on fetch, verified on load
 
-**No `bfill`, anywhere.** `02` Part A2 identifies `data.ffill().bfill()` in the reference
-repository as the actual leak in the whole project -- backward fill on an interior gap
+**No `bfill`, anywhere.** `02` Part A2 identifies `data.ffill().bfill()` in the naive
+baseline as the actual leak in the whole project -- backward fill on an interior gap
 carries a future price into the past, and it lives in the file nobody reads. This module
 does not fill at all: a gap stays NaN and `Bars` refuses to construct with NaN in close,
 so bad data fails loudly at the boundary instead of quietly downstream.

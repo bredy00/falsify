@@ -150,7 +150,7 @@ def benchmark_equity(
     """Buy-and-hold on the *reported* window. Part E, final block.
 
     Sliced before compounding, so `bench[0] == initial_capital` exactly and the
-    two curves are comparable. The reference repo compounds the market through
+    two curves are comparable. The naive baseline compounds the market through
     the warm-up while the strategy curve restarts after a `dropna`, then plots
     them against different bases -- a bug that makes the strategy look better or
     worse purely as a function of warm-up length.

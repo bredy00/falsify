@@ -1,7 +1,7 @@
 """Risk-free rate series. 03 Part H decision 4.
 
     "Risk-free: constant, set to the period mean of 3-month T-bills. The cash-yield
-     term must exist (that's the reference repo's omission), but a full T-bill path is
+     term must exist (that's the naive baseline's omission), but a full T-bill path is
      Phase 8 polish. Record the constant used in the manifest."
 
 So this fetches the path, stores it under the same SHA256 discipline as the price cache,

@@ -387,7 +387,7 @@ def test_excess_kurtosis_would_change_the_answer() -> None:
 
 
 def test_cagr_uses_elapsed_time_not_a_nominal_bar_count() -> None:
-    """The reference repo divides by `len(portfolio_values) / 252`, so every
+    """The naive baseline divides by `len(portfolio_values) / 252`, so every
     holiday-heavy stretch silently inflates the annualisation. Exact here."""
     equity = np.asarray([100.0, 100.0 * math.exp(0.06 * 10.0)])
     assert cagr(equity, 10.0) == pytest.approx(math.exp(0.06) - 1.0, abs=1e-12)
@@ -407,7 +407,7 @@ def test_cagr_uses_elapsed_time_not_a_nominal_bar_count() -> None:
 
 def test_degenerate_inputs_do_not_silently_produce_numbers() -> None:
     """Gate 0.4. A zero Sharpe and an undefined Sharpe are different claims and
-    only one of them is true; the reference repo returns 0.0 here."""
+    only one of them is true; the naive baseline returns 0.0 here."""
     assert math.isnan(sharpe(np.zeros(50))), "constant returns must give NaN, not 0.0"
     assert math.isnan(sharpe(np.asarray([0.01]))), "a single observation has no Sharpe"
     assert max_drawdown(np.asarray([100.0, 100.0, 100.0])) == 0.0

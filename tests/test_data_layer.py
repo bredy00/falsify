@@ -196,8 +196,8 @@ def test_a_multi_ticker_frame_is_rejected_rather_than_silently_narrowed() -> Non
 def test_the_contract_rejects_rather_than_repairs(mutate: object, match: str) -> None:
     """Part G's validate stage rejects; it never fixes.
 
-    A loader that quietly repairs bad data is how a silent leak enters -- the reference
-    repository's `ffill().bfill()` being the canonical example, and it lives in the file
+    A loader that quietly repairs bad data is how a silent leak enters -- the naive
+    baseline's `ffill().bfill()` being the canonical example, and it lives in the file
     nobody reads.
     """
     with pytest.raises((ValidationFailed, DataUnavailable), match=match):

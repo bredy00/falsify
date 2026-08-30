@@ -1,45 +1,64 @@
 # Backtester Build Playbook
 
-**Reference read:** `restiverumble/algorithmic-trading-backtester` — 4 commits, 3 modules, ~180 LOC.
 **Target:** a backtester that reports an estimate *and its error bar*, plus the probability the number survived by luck.
 
 ---
 
-## Part 0 — What the reference repo actually is
+## Part 0 — What a demo-grade backtester gets wrong
 
-Three files. `data/data_loader.py` pulls yfinance, forward/back-fills, computes `pct_change`. `engine/backtester.py` holds one class with one method: SMA(20) vs SMA(50), long-or-cash, signal shifted by one bar, friction charged on position changes. `analytics/metrics.py` computes Sharpe, MDD, CAGR.
+The starting point is the shape almost every first backtester takes: three modules, a couple
+of hundred lines. A loader that pulls daily bars from yfinance, fills gaps and computes
+`pct_change`. An engine holding one class with one method — SMA(20) against SMA(50),
+long-or-cash, signal shifted one bar, friction charged on position changes. A metrics module
+computing Sharpe, maximum drawdown and CAGR.
 
-Credit where due — the shift-by-one is correct, friction is modelled at all, and the code is clean. That already beats most student repos. But it's a demo, not an instrument.
+None of that is stupid. Shifting the signal by one bar is correct and it is the single thing
+most people get wrong. Modelling friction at all puts it ahead of the median. But it is a
+demo, and the distance between a demo and an instrument is the whole of this project.
 
-### Defects worth naming (these become your feature list)
+### Defects worth naming (these become the feature list)
 
-**1. The benchmark curve is wrong.** In `run_moving_average_crossover`:
+**1. The benchmark curve starts from the wrong base.** Strategy return is NaN through the
+lookback warm-up, so `cumprod` skips it and the strategy curve starts at ~1.0 after a
+`dropna`. Market return has no NaNs and compounds through all of those warm-up bars. The two
+curves are then plotted against each other from different bases. Fix: slice first, compound
+second.
 
-```python
-self.df["cum_market_return"] = (1 + self.df["daily_return"]).cumprod()
-self.df["cum_strategy_return"] = (1 + self.df["net_strategy_return"]).cumprod()
-self.df = self.df.dropna()
-```
+**2. CAGR assumes 252 bars per year.** `years = len(values) / 252` counts bars, not time. Use
+elapsed calendar time, `(idx[-1] - idx[0]).days / 365.25`, or every holiday-heavy year
+silently inflates the annualisation.
 
-`net_strategy_return` is NaN through the 50-bar warm-up, so `cumprod` skips it and the strategy curve starts at ~1.0 after the dropna. `daily_return` has no NaNs, so the market curve compounds through all 50 warm-up bars and starts at whatever it drifted to. The two curves are then plotted and compared against different bases. Fix: slice first, compound second.
+**3. Cash earns nothing.** A long-or-cash strategy sits in cash roughly half the time and is
+credited 0%. At a 5% policy rate that is a large fraction of the return being discarded.
+`risk_free_rate` typically defaults to 0.0 and is used only in the Sharpe numerator, never in
+the equity path — so the equity curve and the Sharpe are misstated in opposite directions.
 
-**2. CAGR assumes 252 bars per year.** `years = len(portfolio_values) / trading_days`. Use elapsed calendar time: `(idx[-1] - idx[0]).days / 365.25`. Otherwise every holiday-heavy year silently inflates the annualisation.
+**4. Sharpe over a series containing exact zeros.** When the position is flat the daily return
+is exactly 0.0. Those zeros shrink the sample standard deviation without shrinking the mean
+proportionally, so a long/cash strategy earns a flattering Sharpe against a fully-invested
+one. Report exposure and a deployed-capital Sharpe alongside it, or the number is not
+comparable to anything.
 
-**3. Cash earns nothing.** The strategy sits in cash roughly half the time and is credited 0%. In 2023–24 that's 5% of forgone return. `risk_free_rate` defaults to 0.0 and is never used in the equity path, only in the Sharpe numerator. Both the strategy and the Sharpe are misstated, in opposite directions.
+**5. Costs are additive, not multiplicative.** `net = gross - friction`. The truth is
+`(1 + r)(1 - c) - 1`. Second-order, but it is free to get right.
 
-**4. Sharpe over a series with exact zeros.** When `position == 0`, the daily return is exactly 0.0. Those zeros shrink the sample standard deviation without shrinking the mean proportionally, so a long/cash strategy gets a flattering Sharpe versus a fully-invested one. Report *exposure* and a deployed-capital Sharpe alongside it, or the number isn't comparable to anything.
+**6. Costs are charged on portfolio return, not traded notional.** Fine while positions are
+0/1 and fully allocated. Breaks the instant fractional sizing or vol targeting arrives, which
+it will.
 
-**5. Costs are additive, not multiplicative.** `net = gross - friction`. The truth is `(1 + r)(1 - c) - 1`. Second-order, but it's free to get right.
+**7. No statistical validation of any kind.** One asset, one strategy, one parameter pair,
+entirely in-sample. The reported Sharpe carries no confidence interval, no correction for the
+parameter pairs tried before this one was chosen, and no out-of-sample split. This is the
+whole ballgame, and it is the gap this project exists to fill.
 
-**6. Costs are charged on portfolio return, not traded notional.** Fine while positions are 0/1 and fully allocated. Breaks the instant you add fractional sizing or vol targeting — which you will.
+**8. Survivorship bias.** yfinance returns currently-listed tickers with back-adjusted prices.
+Every company that went to zero is invisible.
 
-**7. No statistical validation of any kind.** One asset, one strategy, one parameter pair, entirely in-sample. The reported Sharpe has no confidence interval, no correction for the number of parameter pairs that were tried before (20, 50) was chosen, no out-of-sample split. This is the whole ballgame and it's the gap you fill.
+**9. `pytest` pinned in the requirements file, and no tests.**
 
-**8. Survivorship bias.** yfinance returns currently-listed tickers with back-adjusted prices. Every company that went to zero is invisible.
-
-**9. `pytest` is pinned in `requirements.txt`. There are no tests.**
-
-**Do not copy this code.** No LICENSE file means all rights reserved. The ideas (SMA crossover, Sharpe) are textbook; the implementation isn't yours to lift. Build from scratch, cite it in your README as prior art you read.
+Every one of these is a general property of naive backtesting rather than a fact about any
+particular repository, which is why they generalise into invariants B1–B10 rather than into a
+list of patches.
 
 ---
 
@@ -162,7 +181,7 @@ Set up CI before you write code. It costs 30 minutes now and saves the "it worke
 - [ ] `data/MANIFEST.json`: sha256 per cached file, written on fetch, verified on load. G10 depends on this.
 - [ ] `synthetic.gbm(mu, sigma, T, seed)` returning a price path with *known* parameters. This is your ground truth for G3 and G4.
 - [ ] `synthetic.ar1(phi, sigma, T, seed)` — mean-reverting series, for testing that a mean-reversion strategy finds signal that genuinely exists.
-- [ ] Explicit missing-data policy. `ffill().bfill()` as in the reference repo backfills the *first* row from the future. On a single leading NaN it's harmless; on a gap it is a look-ahead. Forward-fill only, then drop the leading NaN block.
+- [ ] Explicit missing-data policy. `ffill().bfill()` as in the naive baseline backfills the *first* row from the future. On a single leading NaN it's harmless; on a gap it is a look-ahead. Forward-fill only, then drop the leading NaN block.
 
 **Free data beyond yfinance:** Ken French's data library (factor returns, the academic standard, free), Stooq via `pandas-datareader`, Nasdaq Data Link. Using French's factors for attribution signals that you read the literature.
 
@@ -188,7 +207,7 @@ The event engine calls `compute` with a hard-sliced window. It is structurally i
 
 The event engine will be 100× slower. That's fine — it exists to certify the fast one, and you run it on a subsample.
 
-Also decide and document: **when do you trade?** Signal computed on close of `t`, filled at close of `t` is the reference repo's implicit assumption and it's optimistic. Filled at open of `t+1` is honest and costs you real return. Pick one, write it in the README, and offer both as a config flag so you can quantify the difference. That comparison is itself a good figure.
+Also decide and document: **when do you trade?** Signal computed on close of `t`, filled at close of `t` is the naive baseline's implicit assumption and it's optimistic. Filled at open of `t+1` is honest and costs you real return. Pick one, write it in the README, and offer both as a config flag so you can quantify the difference. That comparison is itself a good figure.
 
 ### Phase 3 — Cost model
 
@@ -199,7 +218,7 @@ class CostModel:
     half_spread_bps: float  # per side
     slippage_bps: float  # per side, or a function of participation rate
     borrow_bps_annual: float  # short financing
-    cash_yield_annual: float  # what idle cash earns — the reference repo drops this
+    cash_yield_annual: float  # what idle cash earns — the naive baseline drops this
 ```
 
 - [ ] Costs charged on **traded notional**: `cost_t = |Δw_t| · V_t · total_bps`, not on portfolio return
@@ -286,7 +305,7 @@ For a 1-day-horizon MA crossover, purging is nearly trivial. It becomes essentia
 
 ### Phase 6 — Strategy zoo
 
-- [ ] MA crossover (parity with the reference repo — your baseline)
+- [ ] MA crossover (the demo strategy, done correctly — your baseline)
 - [ ] Time-series momentum (Moskowitz–Ooi–Pedersen 2012: 12-month lookback, 1-month hold). Published Sharpe ≈ 0.8 on a diversified futures basket. If yours comes out at 3.0 on SPY, you have a bug — this is a free calibration check against the literature.
 - [ ] Mean reversion on a z-score of price vs rolling mean
 - [ ] Vol-targeted overlay: scale position by `σ_target / σ̂_t`. Almost always improves Sharpe and adds turnover — a clean demonstration of the cost/benefit tension.

@@ -29,7 +29,7 @@ class BuyAndHold(Strategy):
 
 
 class MACrossover(Strategy):
-    """The reference repo's strategy, done correctly: long when the fast mean is
+    """The naive baseline's strategy, done correctly: long when the fast mean is
     above the slow one, short when below, decision lagged a bar."""
 
     def __init__(self, fast: int = 20, slow: int = 50) -> None:

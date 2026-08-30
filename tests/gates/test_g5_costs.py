@@ -115,7 +115,7 @@ def test_g5_break_even_cost_is_finite_and_reported(sweep: CostSweep, trending_ba
 def test_g5_zero_turnover_is_indifferent_to_cost() -> None:
     """Buy-and-hold never trades after the anchor, so its Sharpe must be flat
     across the whole sweep. If it moves, cost is being charged on something other
-    than traded notional -- which is the reference repo's mistake."""
+    than traded notional -- which is the naive baseline's mistake."""
     bars = bars_from_close(gbm(0.08, 0.20, 800, np.random.default_rng(SEED + 1)))
     flat = sweep_costs(bars, BuyAndHold(), GRID, CAPITAL, "next_open", ledger=LEDGER)
     spread = float(np.ptp(flat.sharpe_annual))

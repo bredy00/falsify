@@ -16,7 +16,7 @@ index s+1, so lag = 1. Reading `next_open`: a signal decided at the close of bar
 s is filled at open[s+1] and held to open[s+2], earning open-indexed return s+2,
 so lag = 2.
 
-`close_to_close` with lag 1 is what the reference repo implements via
+`close_to_close` with lag 1 is what the naive baseline implements via
 `position = raw_signal.shift(1)`. It is defensible on daily data and it flatters
 the result, which is why the default here is `next_open`.
 

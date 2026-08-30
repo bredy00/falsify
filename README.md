@@ -611,8 +611,3 @@ Open access: https://www.ams.org/notices/201405/rnoti-p458.pdf
 
 The two PDFs here are original exposition written to accompany that paper. They reproduce none
 of it. Read the original.
-
-## Prior art
-
-`github.com/restiverumble/algorithmic-trading-backtester` — read as reference, not copied. No
-LICENSE file, so all rights reserved. Build from scratch.

@@ -203,7 +203,7 @@ def test_g2_fires_on_an_engine_disagreement(bars: Bars) -> None:
 def test_equity_and_benchmark_start_at_initial_capital(convention: Convention, bars: Bars) -> None:
     """Part E: assert `equity[0] == bench[0] == initial_capital`, exactly.
 
-    This is the reference repo's benchmark bug expressed as a test. Slice first,
+    This is the naive baseline's benchmark bug expressed as a test. Slice first,
     compound second, and the two curves share a base.
     """
     for engine in (run_event, run_vectorized):
