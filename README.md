@@ -35,6 +35,109 @@ factor attribution, limitations, and what would have to be true for this to be t
 
 ---
 
+## Quickstart
+
+Python **3.12** and [uv](https://docs.astral.sh/uv/). Steps 1–4 make no network call and
+need no data files — everything runs in a clean checkout.
+
+**1. Clone the repository**
+
+```bash
+git clone https://github.com/bredy00/falsify.git
+cd falsify
+```
+
+**2. Install the locked environment**
+
+```bash
+uv sync --all-groups
+```
+
+**3. Run the gate suite**
+
+```bash
+uv run pytest -n auto -m "not live"
+```
+
+**475 tests, 0 skipped.** This is the argument, not a smoke test: the causality τ-test,
+twin-engine agreement, null calibration, PBO via CSCV, and byte-level reproducibility all
+run here. CI averages **49.3 s ± 1.9 (SE)** for lint, typecheck and gates together.
+
+**4. Write the metrics report**
+
+```bash
+uv run python scripts/report.py
+```
+
+Writes `outputs/metrics.json` — the estimate, its 95% interval, the trial count, the
+deflated Sharpe, and two booleans the rest of the file has to earn:
+
+```json
+"interpretable": false,
+"ships": false
+```
+
+Run it twice; the bytes are identical. Note this one runs on **synthetic GBM**, which is
+momentum's null, so it works with no cache — it is deliberately not the headline number.
+
+**5. For the real-data figures, populate the cache**
+
+```bash
+uv run --group data python scripts/fetch_data.py
+```
+
+The only script in the repository that touches the network. It writes parquet under
+`data/cache/` and records what it asked for in a committed manifest, which every later read
+verifies. Then `make tearsheet` and `make surface` regenerate the two figures below, and
+`uv run pytest tests/live -m live` runs the 20 tests that check the headline against real SPY.
+
+### Every other entry point
+
+| | |
+|---|---|
+| `make ci` | lint + typecheck + gates, exactly as CI runs them |
+| `make prop` | Gate 0.0 with printed statistics and its figure |
+| `make reproduce` | assert two runs are byte-identical |
+| `make report-pdf` | the project board as a PDF |
+| `make g9-figure` | PBO against selection temperature at all 12,870 splits — minutes, not seconds |
+| `make clean` | drop caches and `outputs/` |
+
+`make help` lists them all. Every target is what CI invokes, so a green `make ci` locally
+means a green build.
+
+---
+
+## Core machinery
+
+- **Twin engines, and they must agree.** An explicit event loop and a vectorised
+  implementation run the same strategy independently. The slow one is obviously right;
+  agreement is what certifies the fast one. Measured difference: **`0.000e+00`** — exact,
+  not merely inside tolerance.
+- **Causality is a test, not a comment.** Scramble every bar after *t*, re-run, assert the
+  output up to *t* is bitwise identical. A `.shift(1)` is a claim; the τ-test is the proof.
+- **Every number carries an error bar.** Sharpe with its standard error, Newey–West HAC
+  *t*-statistics with automatic lag selection, and stationary-bootstrap confidence intervals
+  (Politis–Romano). A point estimate with no interval does not reach the reporting layer.
+- **The search is counted by machine.** An append-only trials ledger records every engine
+  invocation under a content-addressed id, so the number of configurations tried is read off
+  the ledger rather than asserted by a human who might round it down.
+- **Overfitting is measured, not assumed.** Combinatorially symmetric cross-validation gives
+  the probability of backtest overfitting; the Deflated Sharpe Ratio prices the search that
+  produced the number. Both are reported whatever they say — here, **0.821** and **0.000**.
+- **Attribution before celebration.** Carhart four-factor regression with HAC standard
+  errors, so a return that is really market beta plus momentum gets named as such.
+- **Costs are swept, not assumed.** Net Sharpe across a cost grid, reporting the break-even
+  round-trip cost — 658 bps for the chosen strategy, which is the holding period earning
+  its keep.
+- **Determinism is a gate, not a hope.** Seeds are threaded explicitly through every
+  stochastic path; two runs from a clean checkout produce byte-identical figures and
+  `metrics.json`.
+- **Real prices, verified on every read.** Daily bars from Yahoo Finance via `yfinance`,
+  cached as parquet and checked against a committed manifest. The gate suite never touches
+  the network, by invariant and by test.
+
+---
+
 ## The two heatmaps
 
 ![In-sample against out-of-sample parameter surfaces](docs/figures/parameter_surface.png)
