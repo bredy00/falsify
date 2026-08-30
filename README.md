@@ -165,10 +165,12 @@ means a green build.
   (Politis–Romano). A point estimate with no interval does not reach the reporting layer.
 - **The search is counted by machine, and the count outlives the process.** Every engine
   invocation appends to `data/trials.jsonl` under a content-addressed id, and the report
-  reads `N` back out of that file rather than from the grid in front of it. So a search
+  reads `N` back out of that file rather than from the grid in front of it — so a search
   spread over five sessions deflates by all five. The ledger ships in the repository: the
-  `N` behind the headline is a file you can open and count. Re-running a finished search
-  adds nothing — same code, same data, same parameters, same address.
+  `N` behind the headline is a file you can open and count. It separates two numbers that
+  are easy to conflate — **trials**, which is what was executed, and **configurations**,
+  which is what the winner was chosen from. Re-running a finished search on new code adds
+  the first and not the second, because it searched nothing new.
 - **Overfitting is measured, not assumed.** Combinatorially symmetric cross-validation gives
   the probability of backtest overfitting; the Deflated Sharpe Ratio prices the search that
   produced the number. Both are reported whatever they say — here, **0.821** and **0.000**.

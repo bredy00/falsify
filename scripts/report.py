@@ -96,9 +96,9 @@ def main() -> int:
     write_metrics(OUTPUT, report)
 
     print(
-        f"strategy: {CHOSEN.name} chosen from {grid.n_configs} configurations "
-        f"this run; ledger reports N = {report.n_trials_raw} in scope "
-        f"({LEDGER.n_trials()} trials in the file overall)"
+        f"strategy: {CHOSEN.name} chosen from {grid.n_configs} configurations this run; "
+        f"N = {report.n_trials_raw} distinct configurations in scope, "
+        f"from {LEDGER.n_trials()} recorded trials in {LEDGER_PATH.as_posix()}"
     )
     print(report.headline())
     print(f"\nwrote {OUTPUT}")

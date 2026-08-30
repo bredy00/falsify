@@ -15,6 +15,7 @@ guard the properties those two depend on.
 from __future__ import annotations
 
 import subprocess
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -23,7 +24,14 @@ import pytest
 from falsify.core.vectorized import run_vectorized
 from falsify.costs import ZERO_COST, CostModel
 from falsify.evaluation import build_grid
-from falsify.ledger import Ledger, LedgerError, Recording, Scope, git_sha
+from falsify.ledger import (
+    Ledger,
+    LedgerError,
+    Recording,
+    Scope,
+    compute_trial_id,
+    git_sha,
+)
 from falsify.strategies.simple import BuyAndHold, CausalZScore, MACrossover
 from falsify.synthetic import bars_from_close, gbm
 
@@ -328,7 +336,15 @@ def test_b3_a_scoped_count_on_a_none_ledger_refuses_rather_than_answering_zero()
     ledger = Ledger.memory(Recording.NONE)
     with pytest.raises(LedgerError, match="retains no rows"):
         ledger.n_trials(Scope(strategies=("MACrossover",)))
-    assert ledger.n_trials() == 0  # unscoped still answers
+    with pytest.raises(LedgerError, match="retains no rows"):
+        ledger.n_configurations(Scope(strategies=("MACrossover",)))
+
+    # Unscoped, both still answer, and `n_configurations` is exact rather than a
+    # fallback: `git_sha` is cached for the life of the process, so one process is one
+    # code state, so two trial ids here can differ only in what defines a configuration.
+    # This is what lets every gate keep a non-persisting ledger and still count itself.
+    assert ledger.n_trials() == 0
+    assert ledger.n_configurations() == 0
 
 
 def test_b3_scope_separates_a_cost_sweep_from_the_search(bars: object, tmp_path: Path) -> None:
@@ -351,4 +367,53 @@ def test_b3_scope_separates_a_cost_sweep_from_the_search(bars: object, tmp_path:
     assert ledger.n_trials() == 4, "the sweep should record every level it evaluated"
     assert ledger.n_trials(Scope(cost_bps=0.0)) == 1, (
         "scoping to the reported cost should leave one candidate, not the whole sweep"
+    )
+
+
+def test_b3_rerunning_a_search_on_new_code_adds_trials_but_not_candidates(
+    bars: object, tmp_path: Path
+) -> None:
+    """The audit trail grows; `N` does not.
+
+    `trial_id` carries the code state by rule 3, so evaluating the same grid again after
+    a commit is genuinely a set of new trials -- and genuinely zero new candidates. A
+    deflated Sharpe asks how many things the winner was chosen from, so it must not move.
+
+    This is not hypothetical. Committing the ledger changes HEAD, so the very next run of
+    `scripts/report.py` re-evaluates every configuration under a new SHA. Deflating by
+    the trial count would have taken `N` from 24 to 48 for a search nobody widened, and
+    the design is explicit that inflating `N` is conservative and still wrong.
+    """
+    path = tmp_path / "trials.jsonl"
+    strategies = [MACrossover(f, 60) for f in (5, 10, 15, 20)]
+
+    first = Ledger(path=path, recording=Recording.TRIALS)
+    build_grid(bars, strategies, ZERO_COST, ledger=first)  # type: ignore[arg-type]
+    assert (first.n_trials(), first.n_configurations()) == (4, 4)
+
+    # The same grid again, as a later commit would record it.
+    replayed = [
+        replace(
+            record,
+            git_sha="0" * 40,
+            trial_id=compute_trial_id(
+                git_sha="0" * 40,
+                data_manifest_hash=record.data_manifest_hash,
+                series_digest=record.series_digest,
+                strategy=record.strategy,
+                params=record.params,
+                universe=record.universe,
+                date_range=record.date_range,
+                cost_bps=record.cost_bps,
+            ),
+        )
+        for record in first.live()
+    ]
+    second = Ledger(path=path, recording=Recording.TRIALS)
+    second.extend(replayed)
+
+    assert second.n_trials() == 8, "the ledger should keep both runs; it is an audit trail"
+    assert second.n_configurations() == 4, (
+        f"N moved to {second.n_configurations()} because the code changed, not because "
+        "anything new was searched. That over-deflates a result for re-running it."
     )

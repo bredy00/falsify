@@ -25,6 +25,15 @@ Three things that fell out of doing it, none of them anticipated here:
 3. **`Scope` gained `cost_bps`.** A cost sweep records eight trials for one
    configuration, correctly — but they are not eight candidates anything was selected
    from, and a deflated Sharpe wants the width of the choice.
+4. **Trials and configurations had to be separated.** Rule 3 puts `git_sha` in
+   `trial_id`, so re-running a finished search after any commit records a fresh set of
+   trials. Deflating by that count took `N` from 24 to 48 for a search nobody widened —
+   and this spec's own risk table says inflating `N` is conservative *and still wrong*.
+   `configuration_id` is the trial address with `git_sha` removed, `n_configurations`
+   counts those, and `build_report` deflates by it. The ledger keeps every trial, because
+   the audit trail is the point; `N` counts what the winner was chosen from. On a ledger
+   that has only seen one code state the two are equal, which is why the distinction did
+   not surface until the ledger outlived the process.
 
 Also found while wiring it: `n_trials(scope)` on a `Recording.NONE` in-memory ledger
 answered `0` rather than refusing, because `NONE` keeps no rows to filter. Zero

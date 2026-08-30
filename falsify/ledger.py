@@ -227,6 +227,32 @@ def compute_trial_id(
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:ID_LENGTH]
 
 
+def configuration_id(record: TrialRecord) -> str:
+    """What a trial is a trial *of*: its address with `git_sha` taken out.
+
+    `trial_id` answers "has this exact run happened before" and includes the code state,
+    which is right -- rule 3, a trial on uncommitted code must not be confused with one
+    on shipped code. But a deflated Sharpe asks a different question: how many candidates
+    was the winner chosen from? Evaluating the same 24 configurations again on a later
+    commit is 24 more trials and zero more candidates. Counting it as 48 over-deflates,
+    and the design notes that inflating `N` is conservative *and still wrong*.
+
+    So: trials are what happened, configurations are what was chosen among, the file
+    keeps both, and `N` is the second one.
+    """
+    defining = {
+        "data_manifest_hash": record.data_manifest_hash,
+        "series_digest": record.series_digest,
+        "strategy": record.strategy,
+        "params": canonical_params(dict(record.params)),
+        "universe": list(record.universe),
+        "date_range": list(record.date_range),
+        "cost_bps": float(record.cost_bps),
+    }
+    canonical = json.dumps(defining, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:ID_LENGTH]
+
+
 @dataclass(frozen=True, slots=True)
 class TrialRecord:
     """One configuration evaluated. 01 Part C's record. Frozen (B7)."""
@@ -493,6 +519,39 @@ class Ledger:
             return len(records)
         return sum(1 for r in records if scope.matches(r))
 
+    def n_configurations(self, scope: Scope | None = None) -> int:
+        """`N` for deflation: distinct configurations, not distinct runs of them.
+
+        This is what `build_report` uses. `n_trials` counts what was executed, which is
+        the audit number and the one that grows when you re-run a finished search on new
+        code. `n_configurations` counts what was chosen among, which is the number the
+        deflated Sharpe and the minimum-backtest-length formula are both asking for.
+
+        On a ledger that has only ever seen one code state the two are equal, which is
+        why the distinction stayed invisible until the ledger started outliving the
+        process.
+        """
+        if self.path is None:
+            if self.recording is Recording.NONE:
+                if scope is not None:
+                    raise LedgerError(
+                        "a NONE ledger retains no rows, so it cannot count a scoped "
+                        "subset of them -- it would answer 0 regardless of what passed "
+                        "through, and under-reporting N is the direction that flatters "
+                        "a deflated Sharpe. Use Recording.TRIALS to keep the rows."
+                    )
+                # One process is one code state: `git_sha` is cached for the life of the
+                # process, so two trial ids can differ only in the fields that define a
+                # configuration. Distinct ids are therefore distinct configurations here,
+                # exactly, and `seen` is the honest count -- which is what lets every gate
+                # keep its non-persisting ledger.
+                return len(self.seen)
+            rows: tuple[TrialRecord, ...] = tuple(self._cache)
+        else:
+            self._prime()
+            rows = self.live()
+        return len({configuration_id(r) for r in rows if scope is None or scope.matches(r)})
+
     def supersede(self, trial_id: str, by: str) -> None:
         """Mark a trial superseded by appending, never by editing (B3 rule 2).
 
@@ -534,6 +593,7 @@ __all__ = [
     "canonical_params",
     "canonical_value",
     "compute_trial_id",
+    "configuration_id",
     "git_sha",
     "make_record",
     "manifest_hash",

@@ -306,9 +306,9 @@ def describe_source(ledger: Ledger, scope: Scope | None) -> str:
     if ledger.path is None:
         where = "in-memory ledger, this process only"
     elif ledger.path.is_absolute():
-        where = f"{ledger.path.name} (cumulative across runs)"
+        where = f"{ledger.path.name} (cumulative; distinct configurations)"
     else:
-        where = f"{ledger.path.as_posix()} (cumulative across runs)"
+        where = f"{ledger.path.as_posix()} (cumulative; distinct configurations)"
 
     if scope is None:
         return f"{where}; scope: every live trial"
@@ -360,11 +360,16 @@ def build_report(
     A file-backed ledger makes `N` cumulative: every configuration ever evaluated within
     `scope` counts, which is the number the deflated Sharpe is supposed to be told.
 
+    `n_configurations`, not `n_trials`. The ledger records a trial per run and includes
+    the code state in its address, so re-running a finished search on a later commit adds
+    trials without adding candidates. Deflating by the second number would over-deflate,
+    and the design is explicit that inflating `N` is conservative and still wrong.
+
     `scope` narrows which trials count, and is how G6's thousand calibrated nulls stay
     out of a real strategy's `N` while sharing one file. Passing `None` counts every
     live trial in the ledger, which is right only when the ledger holds nothing else.
     """
-    n_trials = ledger.n_trials(scope)
+    n_trials = ledger.n_configurations(scope)
     if n_trials < grid.n_configs:
         raise LedgerError(
             f"the ledger reports {n_trials} trial(s) in scope but the grid holds "
